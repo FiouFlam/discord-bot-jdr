@@ -1,9 +1,6 @@
-const {
-  ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder,
-  EmbedBuilder
-} = require('discord.js');
-const { getFiche, setFiche } = require('../utils/database');
-const { buildFicheEmbed, buildFicheButtons, buildItemSelectMenu } = require('../utils/ficheBuilder');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { getFiche, setFiche, getAllFiches } = require('../utils/database');
+const { buildFicheEmbed, buildFicheButtons, buildNavigationButtons } = require('../utils/ficheBuilder');
 
 module.exports = {
   name: 'interactionCreate',
@@ -27,18 +24,58 @@ module.exports = {
     if (interaction.isButton()) {
       const id = interaction.customId;
 
+      // Navigation prev/next
+      if (id.startsWith('nav_prev_') || id.startsWith('nav_next_')) {
+        const parts = id.split('_');
+        const direction = parts[1]; // prev ou next
+        const currentIndex = parseInt(parts[2]);
+        const newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+
+        const fiches = getAllFiches();
+        const userIds = Object.keys(fiches);
+
+        if (newIndex < 0 || newIndex >= userIds.length) return interaction.deferUpdate();
+
+        const userId = userIds[newIndex];
+        const fiche = fiches[userId];
+
+        let targetUser;
+        try { targetUser = await interaction.client.users.fetch(userId); }
+        catch { targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null }; }
+
+        const embed = buildFicheEmbed(fiche, targetUser);
+        embed.setFooter({ text: `Fiche ${newIndex + 1} / ${userIds.length}` });
+
+        const ficheButtons = buildFicheButtons(userId);
+        const navButtons = buildNavigationButtons(newIndex, userIds.length, userId);
+
+        return interaction.update({ embeds: [embed], components: [...ficheButtons, navButtons] });
+      }
+
       // btn_objet_USERID
       if (id.startsWith('btn_objet_')) {
         const userId = id.replace('btn_objet_', '');
-        const fiche = getFiche(userId);
-        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-
-        const selectRow = buildItemSelectMenu(userId);
-        return interaction.reply({
-          content: '🎒 Choisissez un objet à ajouter à l\'inventaire :',
-          components: [selectRow],
-          ephemeral: true,
-        });
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_objet_${userId}`)
+          .setTitle('Ajouter un objet');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('objet_nom')
+              .setLabel('Nom de l\'objet')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('objet_niveau')
+              .setLabel('Niveau de l\'objet (ex: 1, 2, 3...)')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder('1')
+              .setRequired(true)
+          )
+        );
+        return interaction.showModal(modal);
       }
 
       // btn_golem_USERID
@@ -142,37 +179,42 @@ module.exports = {
       }
     }
 
-    // ── Select Menu (objets) ────────────────────────────────────────
-    if (interaction.isStringSelectMenu()) {
-      if (interaction.customId.startsWith('select_objet_')) {
-        const userId = interaction.customId.replace('select_objet_', '');
-        const fiche = getFiche(userId);
-        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-
-        const value = interaction.values[0]; // format: itemid_userid
-        const itemId = value.replace(`_${userId}`, '');
-        const { loadItems } = require('../utils/database');
-        const items = loadItems();
-        const item = items.find(i => i.id === itemId);
-        if (!item) return interaction.reply({ content: '❌ Objet introuvable.', ephemeral: true });
-
-        fiche.inventaire.push(item.name);
-        setFiche(userId, fiche);
-
-        const targetUser = await interaction.client.users.fetch(userId);
-        const embed = buildFicheEmbed(fiche, targetUser);
-        const buttons = buildFicheButtons(userId);
-
-        await interaction.update({ content: `✅ **${item.name}** ajouté à l'inventaire !`, components: [] });
-
-        // Update original fiche message if possible
-        await interaction.followUp({ embeds: [embed], components: buttons });
-      }
-    }
-
     // ── Modals ──────────────────────────────────────────────────────
     if (interaction.isModalSubmit()) {
       const id = interaction.customId;
+
+      async function refreshFiche(userId, interaction, isUpdate = false) {
+        const fiche = getFiche(userId);
+        let targetUser;
+        try { targetUser = await interaction.client.users.fetch(userId); }
+        catch { targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null }; }
+
+        const embed = buildFicheEmbed(fiche, targetUser);
+        const buttons = buildFicheButtons(userId);
+
+        if (isUpdate) {
+          return interaction.update({ embeds: [embed], components: buttons });
+        }
+        return interaction.reply({ embeds: [embed], components: buttons });
+      }
+
+      // modal_objet_USERID
+      if (id.startsWith('modal_objet_')) {
+        const userId = id.replace('modal_objet_', '');
+        const fiche = getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+
+        const nom = interaction.fields.getTextInputValue('objet_nom');
+        const niveauRaw = interaction.fields.getTextInputValue('objet_niveau');
+        const niveau = parseInt(niveauRaw);
+        if (isNaN(niveau) || niveau < 1) {
+          return interaction.reply({ content: '❌ Niveau invalide ! Entre un nombre supérieur à 0.', ephemeral: true });
+        }
+
+        fiche.inventaire.push({ nom, niveau });
+        setFiche(userId, fiche);
+        return refreshFiche(userId, interaction);
+      }
 
       // modal_golem_USERID
       if (id.startsWith('modal_golem_')) {
@@ -183,11 +225,7 @@ module.exports = {
         const nom = interaction.fields.getTextInputValue('golem_input');
         fiche.golems.push(nom);
         setFiche(userId, fiche);
-
-        const targetUser = await interaction.client.users.fetch(userId);
-        const embed = buildFicheEmbed(fiche, targetUser);
-        const buttons = buildFicheButtons(userId);
-        return interaction.reply({ embeds: [embed], components: buttons });
+        return refreshFiche(userId, interaction);
       }
 
       // modal_propriete_USERID
@@ -199,11 +237,7 @@ module.exports = {
         const nom = interaction.fields.getTextInputValue('propriete_input');
         fiche.proprietes.push(nom);
         setFiche(userId, fiche);
-
-        const targetUser = await interaction.client.users.fetch(userId);
-        const embed = buildFicheEmbed(fiche, targetUser);
-        const buttons = buildFicheButtons(userId);
-        return interaction.reply({ embeds: [embed], components: buttons });
+        return refreshFiche(userId, interaction);
       }
 
       // modal_argent_USERID
@@ -215,18 +249,14 @@ module.exports = {
         const input = interaction.fields.getTextInputValue('argent_action').trim();
         const match = input.match(/^([+-]?)(\d+)$/);
         if (!match) {
-          return interaction.reply({ content: '❌ Format invalide ! Ex: `+500` ou `-200`', ephemeral: true });
+          return interaction.reply({ content: '❌ Format invalide ! Ex: `+500` ou `-200` ou `500`', ephemeral: true });
         }
 
         const sign = match[1] === '-' ? -1 : 1;
         const amount = parseInt(match[2]);
         fiche.argent = Math.max(0, fiche.argent + sign * amount);
         setFiche(userId, fiche);
-
-        const targetUser = await interaction.client.users.fetch(userId);
-        const embed = buildFicheEmbed(fiche, targetUser);
-        const buttons = buildFicheButtons(userId);
-        return interaction.reply({ embeds: [embed], components: buttons });
+        return refreshFiche(userId, interaction);
       }
 
       // modal_revenu_USERID
@@ -242,11 +272,7 @@ module.exports = {
 
         fiche.revenu = val;
         setFiche(userId, fiche);
-
-        const targetUser = await interaction.client.users.fetch(userId);
-        const embed = buildFicheEmbed(fiche, targetUser);
-        const buttons = buildFicheButtons(userId);
-        return interaction.reply({ embeds: [embed], components: buttons });
+        return refreshFiche(userId, interaction);
       }
 
       // modal_champ_USERID
@@ -261,11 +287,7 @@ module.exports = {
         if (!fiche.champsCustom) fiche.champsCustom = [];
         fiche.champsCustom.push({ nom, valeur });
         setFiche(userId, fiche);
-
-        const targetUser = await interaction.client.users.fetch(userId);
-        const embed = buildFicheEmbed(fiche, targetUser);
-        const buttons = buildFicheButtons(userId);
-        return interaction.reply({ embeds: [embed], components: buttons });
+        return refreshFiche(userId, interaction);
       }
     }
   }

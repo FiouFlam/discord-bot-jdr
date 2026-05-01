@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { getFiche, setFiche, deleteFiche } = require('../utils/database');
-const { buildFicheEmbed, buildFicheButtons, createDefaultFiche } = require('../utils/ficheBuilder');
+const { getFiche, setFiche, deleteFiche, getAllFiches } = require('../utils/database');
+const { buildFicheEmbed, buildFicheButtons, buildNavigationButtons, createDefaultFiche } = require('../utils/ficheBuilder');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,6 +21,10 @@ module.exports = {
       sub.setName('del')
         .setDescription('Supprimer une fiche personnage')
         .addUserOption(opt => opt.setName('user').setDescription('Le joueur').setRequired(true))
+    )
+    .addSubcommand(sub =>
+      sub.setName('all')
+        .setDescription('Afficher toutes les fiches avec navigation')
     ),
 
   async execute(interaction) {
@@ -34,7 +38,6 @@ module.exports = {
       const descriptif = interaction.options.getString('descriptif');
       const competences = interaction.options.getString('competences');
 
-      // Validate competences format
       const parts = competences.split(';');
       if (parts.length !== 4 || parts.some(p => isNaN(Number(p)))) {
         return interaction.reply({
@@ -43,7 +46,6 @@ module.exports = {
         });
       }
 
-      // Check if fiche already exists
       const existing = getFiche(targetUser.id);
       if (existing) {
         return interaction.reply({
@@ -58,10 +60,7 @@ module.exports = {
       const embed = buildFicheEmbed(fiche, targetUser);
       const buttons = buildFicheButtons(targetUser.id);
 
-      await interaction.reply({
-        embeds: [embed],
-        components: buttons,
-      });
+      await interaction.reply({ embeds: [embed], components: buttons });
     }
 
     if (sub === 'del') {
@@ -78,6 +77,37 @@ module.exports = {
       await interaction.reply({
         content: `✅ La fiche de **${targetUser.username}** a été supprimée.`,
         ephemeral: true
+      });
+    }
+
+    if (sub === 'all') {
+      const fiches = getAllFiches();
+      const userIds = Object.keys(fiches);
+
+      if (userIds.length === 0) {
+        return interaction.reply({ content: '❌ Aucune fiche trouvée.', ephemeral: true });
+      }
+
+      const index = 0;
+      const userId = userIds[index];
+      const fiche = fiches[userId];
+
+      let targetUser;
+      try {
+        targetUser = await interaction.client.users.fetch(userId);
+      } catch {
+        targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null };
+      }
+
+      const embed = buildFicheEmbed(fiche, targetUser);
+      embed.setFooter({ text: `Fiche ${index + 1} / ${userIds.length}` });
+
+      const ficheButtons = buildFicheButtons(userId);
+      const navButtons = buildNavigationButtons(index, userIds.length, userId);
+
+      await interaction.reply({
+        embeds: [embed],
+        components: [...ficheButtons, navButtons],
       });
     }
   }

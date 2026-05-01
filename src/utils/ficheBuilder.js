@@ -1,5 +1,4 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
-const { loadItems } = require('./database');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 function buildFicheEmbed(fiche, targetUser) {
   const stats = fiche.competences;
@@ -7,7 +6,6 @@ function buildFicheEmbed(fiche, targetUser) {
   const embed = new EmbedBuilder()
     .setTitle(`Fiche personnage de ${targetUser.username}`)
     .setColor(0x2b2d31)
-    .setThumbnail(targetUser.displayAvatarURL())
     .addFields(
       { name: 'Nom / Prénom', value: fiche.nom || '—', inline: false },
       { name: 'Âge', value: String(fiche.age) || '—', inline: true },
@@ -25,18 +23,24 @@ function buildFicheEmbed(fiche, targetUser) {
       { name: '🪨 Golem', value: String(fiche.golems.length), inline: true },
     );
 
+  if (targetUser.displayAvatarURL) {
+    embed.setThumbnail(targetUser.displayAvatarURL());
+  }
+
   // Inventaire
-  const inventaire = fiche.inventaire.length > 0 ? fiche.inventaire.join('\n') : '*(vide)*';
+  const inventaire = fiche.inventaire.length > 0
+    ? fiche.inventaire.map(obj => `• ${obj.nom} *(niv. ${obj.niveau})*`).join('\n')
+    : '*(vide)*';
   embed.addFields({ name: '🎒 Inventaire', value: inventaire, inline: false });
 
   // Propriétés
   if (fiche.proprietes.length > 0) {
-    embed.addFields({ name: '🏡 Liste des propriétés', value: fiche.proprietes.join('\n'), inline: false });
+    embed.addFields({ name: '🏡 Liste des propriétés', value: fiche.proprietes.map(p => `• ${p}`).join('\n'), inline: false });
   }
 
   // Golems
   if (fiche.golems.length > 0) {
-    embed.addFields({ name: '🪨 Liste des golems', value: fiche.golems.join('\n'), inline: false });
+    embed.addFields({ name: '🪨 Liste des golems', value: fiche.golems.map(g => `• ${g}`).join('\n'), inline: false });
   }
 
   // Champs custom
@@ -81,21 +85,19 @@ function buildFicheButtons(userId) {
   return [row1, row2];
 }
 
-function buildItemSelectMenu(userId) {
-  const items = loadItems();
-  const options = items.map(item => ({
-    label: item.name,
-    description: item.description,
-    value: `${item.id}_${userId}`,
-  }));
-
+function buildNavigationButtons(currentIndex, total, currentUserId) {
   const row = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(`select_objet_${userId}`)
-      .setPlaceholder('Choisissez un objet...')
-      .addOptions(options)
+    new ButtonBuilder()
+      .setCustomId(`nav_prev_${currentIndex}_${currentUserId}`)
+      .setLabel('◀ Fiche précédente')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(currentIndex === 0),
+    new ButtonBuilder()
+      .setCustomId(`nav_next_${currentIndex}_${currentUserId}`)
+      .setLabel('Fiche suivante ▶')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(currentIndex === total - 1),
   );
-
   return row;
 }
 
@@ -122,4 +124,4 @@ function createDefaultFiche(nom, age, taille, descriptif, competences) {
   };
 }
 
-module.exports = { buildFicheEmbed, buildFicheButtons, buildItemSelectMenu, createDefaultFiche };
+module.exports = { buildFicheEmbed, buildFicheButtons, buildNavigationButtons, createDefaultFiche };

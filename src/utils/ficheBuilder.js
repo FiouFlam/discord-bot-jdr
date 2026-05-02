@@ -1,14 +1,9 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-// ─── Formate une liste d'items en 3 par ligne ──────────────────────────────────
+// ─── Formate une liste d'items — un par ligne, numérotés correctement ──────────
 function formatItemList(items, formatter) {
   if (!items || items.length === 0) return '*(vide)*';
-  const parts = items.map((item, i) => formatter(item, i));
-  const lines = [];
-  for (let i = 0; i < parts.length; i += 3) {
-    lines.push(parts.slice(i, i + 3).join('  ·  '));
-  }
-  return lines.join('\n');
+  return items.map((item, i) => formatter(item, i)).join('\n');
 }
 
 // Formateur objet perso/golem : { nom, quantite?, niveau? }
@@ -125,22 +120,23 @@ function buildFicheEmbed(fiche, targetUser) {
 // ─── Boutons ───────────────────────────────────────────────────────────────────
 function buildFicheButtons(userId) {
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`btn_refresh_${userId}`).setLabel('🔄 Refresh').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`btn_ajouter_${userId}`).setLabel('➕ Ajouter').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`btn_supprimer_${userId}`).setLabel('➖ Supprimer').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`btn_transferer_${userId}`).setLabel('🔁 Transférer').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`btn_vendre_${userId}`).setLabel('💰 Vendre').setStyle(ButtonStyle.Success),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`btn_vendre_${userId}`).setLabel('💰 Vendre').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`argent_ajouter_${userId}`).setLabel('💸 Ajouter argent').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`argent_retirer_${userId}`).setLabel('💸 Retirer argent').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`btn_transfert_argent_${userId}`).setLabel('💳 Transférer argent').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`btn_revenu_${userId}`).setLabel('🪙 Revenu / jour').setStyle(ButtonStyle.Success),
   );
 
   const row3 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`btn_hp_plus_${userId}`).setLabel('❤️ HP +').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`btn_hp_minus_${userId}`).setLabel('💔 HP -').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`btn_refresh_${userId}`).setLabel('🔄 Refresh').setStyle(ButtonStyle.Secondary),
   );
 
   return [row1, row2, row3];
@@ -277,13 +273,72 @@ function removeFromInventory(arr, nom, quantite, type) {
   return null;
 }
 
+// ─── Labels g1/g2/p1/p2 pour l'affichage dans les modals ─────────────────────
+function getInventoryListLabels(fiche) {
+  const list = ['perso'];
+  for (let i = 0; i < (fiche.golems || []).length; i++) list.push(`g${i + 1}`);
+  for (let i = 0; i < (fiche.proprietes || []).length; i++) list.push(`p${i + 1}`);
+  return list;
+}
+
+// Résout un label (perso, g1, g2, p1...) OU le nom exact → { arr, type } ou null
+function resolveInventoryByLabel(fiche, name) {
+  const n = name.trim().toLowerCase();
+
+  if (n === 'perso' || n === '') {
+    if (!Array.isArray(fiche.inventaire)) fiche.inventaire = [];
+    return { arr: fiche.inventaire, type: 'perso' };
+  }
+
+  // gX → golem par index
+  const golemMatch = n.match(/^g(\d+)$/);
+  if (golemMatch) {
+    const idx = parseInt(golemMatch[1]) - 1;
+    if (idx < 0 || idx >= (fiche.golems || []).length) return null;
+    if (typeof fiche.golems[idx] === 'string') fiche.golems[idx] = { nom: fiche.golems[idx], inventaire: [] };
+    if (!Array.isArray(fiche.golems[idx].inventaire)) fiche.golems[idx].inventaire = [];
+    return { arr: fiche.golems[idx].inventaire, type: 'golem', index: idx };
+  }
+
+  // pX → propriété par index
+  const propMatch = n.match(/^p(\d+)$/);
+  if (propMatch) {
+    const idx = parseInt(propMatch[1]) - 1;
+    if (idx < 0 || idx >= (fiche.proprietes || []).length) return null;
+    if (typeof fiche.proprietes[idx] === 'string') fiche.proprietes[idx] = { nom: fiche.proprietes[idx], objets: [] };
+    if (!Array.isArray(fiche.proprietes[idx].objets)) fiche.proprietes[idx].objets = [];
+    return { arr: fiche.proprietes[idx].objets, type: 'propriete', index: idx };
+  }
+
+  // Fallback : résolution par nom exact
+  return resolveInventory(fiche, name);
+}
+
+// Supprime par index (0-based) dans arr
+function removeFromInventoryByIndex(arr, index, quantite, type) {
+  const qty = Math.max(1, parseInt(quantite) || 1);
+  if (index < 0 || index >= arr.length) return `❌ Numéro invalide.`;
+  const obj = arr[index];
+  const current = typeof obj === 'string' ? 1 : (obj.quantite || 1);
+  if (qty >= current) {
+    arr.splice(index, 1);
+  } else {
+    if (typeof arr[index] === 'string') arr[index] = { nom: arr[index], quantite: current - qty };
+    else arr[index].quantite = current - qty;
+  }
+  return null;
+}
+
 module.exports = {
   buildFicheEmbed,
   buildFicheButtons,
   buildNavigationButtons,
   createDefaultFiche,
   getInventoryList,
+  getInventoryListLabels,
   resolveInventory,
+  resolveInventoryByLabel,
   addToInventory,
   removeFromInventory,
+  removeFromInventoryByIndex,
 };

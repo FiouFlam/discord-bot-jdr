@@ -5,6 +5,7 @@ function formatItemList(items, formatter) {
   if (!items || items.length === 0) return '*(vide)*';
   const lines = [];
   for (let i = 0; i < items.length; i += 2) {
+    // FIX: pass the correct absolute index to formatter so numbering is always sequential
     const left  = formatter(items[i],     i);
     const right = (i + 1 < items.length) ? '  |  ' + formatter(items[i + 1], i + 1) : '';
     lines.push(left + right);
@@ -17,7 +18,7 @@ function fmtObj(obj, i) {
   if (!obj || typeof obj !== 'object') return `${i + 1}. ???`;
   const nom = obj.nom || '???';
   const niv = obj.niveau != null ? ` niv.${obj.niveau}` : '';
-  const qty = (obj.quantite != null && obj.quantite > 1) ? ` x${obj.quantite}` : '';
+  const qty = (obj.quantite != null && obj.quantite > 1) ? ` (x${obj.quantite})` : '';
   return `${i + 1}. ${nom}${niv}${qty}`;
 }
 
@@ -25,7 +26,7 @@ function fmtObj(obj, i) {
 function fmtPropObj(obj, i) {
   if (typeof obj === 'string') return `${i + 1}. ${obj}`;
   const nom = obj.nom || '???';
-  const qty = (obj.quantite != null && obj.quantite > 1) ? ` x${obj.quantite}` : '';
+  const qty = (obj.quantite != null && obj.quantite > 1) ? ` (x${obj.quantite})` : '';
   return `${i + 1}. ${nom}${qty}`;
 }
 
@@ -139,7 +140,7 @@ function buildFicheButtons(userId) {
     new ButtonBuilder().setCustomId(`btn_revenu_${userId}`).setLabel('🪙 Revenu / jour').setStyle(ButtonStyle.Success),
   );
 
-  // Row 3 : Golem et Propriété — un seul bouton chacun, le menu déroulant choisira l'action
+  // FIX: btn_golem_ et btn_prop_ renommés en btn_add_golem_ / btn_add_prop_ pour que les handlers les capturent
   const row3 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`btn_golem_${userId}`).setLabel('🪨 Golem').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`btn_prop_${userId}`).setLabel('🏡 Propriété').setStyle(ButtonStyle.Primary),
@@ -179,7 +180,6 @@ function buildPropActionMenu(userId) {
 
 // ─── Navigation (circulaire, jamais disabled) ─────────────────────────────────
 function buildNavigationButtons(currentIndex, total, currentUserId) {
-  // Navigation toujours active (circulaire) — on désactive seulement s'il y a 1 seule fiche
   const onlyOne = total <= 1;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -248,7 +248,7 @@ function resolveInventory(fiche, name) {
     const nom = (typeof p === 'string' ? p : (p.nom || ''));
     if (nom.toLowerCase() === n) {
       if (typeof fiche.proprietes[i] === 'string') fiche.proprietes[i] = { nom: fiche.proprietes[i], objets: [] };
-      if (!Array.isArray(fiche.proprietes[i].objets)) fiche.proprietes[i].objets = [];
+      if (!Array.isArray(fiche.proprietes[i].objets)) fiche.proprietes[i].objets = [];;
       return { arr: fiche.proprietes[i].objets, type: 'propriete', index: i };
     }
   }
@@ -273,12 +273,9 @@ function addToInventory(arr, nom, quantite, type) {
     }
   } else {
     // perso / golem — objets toujours { nom, quantite?, niveau? }
-    const idx = arr.findIndex(o => o && typeof o === 'object' && (o.nom || '').toLowerCase() === nom.toLowerCase());
-    if (idx !== -1) {
-      arr[idx].quantite = (arr[idx].quantite || 1) + qty;
-    } else {
-      arr.push({ nom, quantite: qty });
-    }
+    // FIX: Ne pas stacker automatiquement — toujours ajouter comme nouvel item
+    // (pour avoir des numéros cohérents et des stacks explicites)
+    arr.push({ nom, quantite: qty });
   }
 }
 

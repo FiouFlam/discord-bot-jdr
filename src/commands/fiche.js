@@ -37,63 +37,41 @@ module.exports = {
       const taille = interaction.options.getString('taille');
       const descriptif = interaction.options.getString('descriptif');
       const competences = interaction.options.getString('competences');
-
       const parts = competences.split(';');
       if (parts.length !== 4 || parts.some(p => isNaN(Number(p)))) {
-        return interaction.reply({
-          content: '❌ Format des compétences invalide ! Utilise : `intelligence;force;dextérité;chance` (ex: `10;8;12;5`)',
-          ephemeral: true
-        });
+        return interaction.editReply({ content: '❌ Format des compétences invalide ! Utilise : `intelligence;force;dextérité;chance` (ex: `10;8;12;5`)' });
       }
-
       const existing = await getFiche(targetUser.id);
-      if (existing) {
-        return interaction.reply({
-          content: `❌ Une fiche existe déjà pour ${targetUser.username} !`,
-          ephemeral: true
-        });
-      }
-
+      if (existing) return interaction.editReply({ content: `❌ Une fiche existe déjà pour ${targetUser.username} !` });
       const fiche = createDefaultFiche(nom, age, taille, descriptif, competences);
       await setFiche(targetUser.id, fiche);
-
       const embed = buildFicheEmbed(fiche, targetUser);
       const buttons = buildFicheButtons(targetUser.id);
-      await interaction.reply({ embeds: [embed], components: buttons });
+      await interaction.editReply({ embeds: [embed], components: buttons });
     }
 
     if (sub === 'del') {
       const targetUser = interaction.options.getUser('user');
       const deleted = await deleteFiche(targetUser.id);
-      if (!deleted) {
-        return interaction.reply({ content: `❌ Aucune fiche trouvée pour ${targetUser.username}.`, ephemeral: true });
-      }
-      await interaction.reply({ content: `✅ La fiche de **${targetUser.username}** a été supprimée.`, ephemeral: true });
+      if (!deleted) return interaction.editReply({ content: `❌ Aucune fiche trouvée pour ${targetUser.username}.` });
+      await interaction.editReply({ content: `✅ La fiche de **${targetUser.username}** a été supprimée.` });
     }
 
     if (sub === 'all') {
       const fiches = await getAllFiches();
       const userIds = Object.keys(fiches);
-
-      if (userIds.length === 0) {
-        return interaction.reply({ content: '❌ Aucune fiche trouvée.', ephemeral: true });
-      }
-
+      if (userIds.length === 0) return interaction.editReply({ content: '❌ Aucune fiche trouvée.' });
       const index = 0;
       const userId = userIds[index];
       const fiche = fiches[userId];
-
       let targetUser;
       try { targetUser = await interaction.client.users.fetch(userId); }
       catch { targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null }; }
-
       const embed = buildFicheEmbed(fiche, targetUser);
       embed.setFooter({ text: `Fiche ${index + 1} / ${userIds.length}` });
-
       const ficheButtons = buildFicheButtons(userId);
       const navButtons = buildNavigationButtons(index, userIds.length, userId);
-
-      await interaction.reply({ embeds: [embed], components: [...ficheButtons, navButtons] });
+      await interaction.editReply({ embeds: [embed], components: [...ficheButtons, navButtons] });
     }
   }
 };

@@ -267,21 +267,18 @@ function resolveInventory(fiche, name) {
 function addToInventory(arr, nom, quantite, type) {
   const qty = Math.max(1, parseInt(quantite) || 1);
 
-  if (type === 'propriete') {
-    const idx = arr.findIndex(o => {
-      const n = typeof o === 'string' ? o : (o.nom || '');
-      return n.toLowerCase() === nom.toLowerCase();
-    });
-    if (idx !== -1) {
-      if (typeof arr[idx] === 'string') arr[idx] = { nom: arr[idx], quantite: 1 };
-      arr[idx].quantite = (arr[idx].quantite || 1) + qty;
-    } else {
-      arr.push(qty > 1 ? { nom, quantite: qty } : nom);
-    }
+  // Pour tous les types : chercher si l'item existe déjà (même nom, insensible à la casse)
+  const idx = arr.findIndex(o => {
+    const n = typeof o === 'string' ? o : (o.nom || '');
+    return n.toLowerCase() === nom.toLowerCase();
+  });
+
+  if (idx !== -1) {
+    // Item trouvé → on additionne la quantité
+    if (typeof arr[idx] === 'string') arr[idx] = { nom: arr[idx], quantite: 1 };
+    arr[idx].quantite = (arr[idx].quantite || 1) + qty;
   } else {
-    // perso / golem — objets toujours { nom, quantite?, niveau? }
-    // FIX: Ne pas stacker automatiquement — toujours ajouter comme nouvel item
-    // (pour avoir des numéros cohérents et des stacks explicites)
+    // Nouvel item
     arr.push({ nom, quantite: qty });
   }
 }

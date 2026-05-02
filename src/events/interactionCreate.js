@@ -1,4 +1,3 @@
-cat > /mnt/user-data/outputs/discord-bot-fixed/src/events/interactionCreate.js << 'ENDOFFILE'
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const { getFiche, setFiche, deleteFiche, getAllFiches } = require('../utils/database');
 const {

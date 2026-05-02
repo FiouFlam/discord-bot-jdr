@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { getAllFiches, setFiche } = require('../utils/database');
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('day')
@@ -8,27 +9,17 @@ module.exports = {
   async execute(interaction) {
     const fiches = await getAllFiches();
     const userIds = Object.keys(fiches);
-    if (userIds.length === 0) {
-      return interaction.reply({ content: '❌ Aucune fiche trouvée.', ephemeral: true });
-    }
+    if (userIds.length === 0) return interaction.editReply({ content: '❌ Aucune fiche trouvée.' });
     let rapport = [];
     for (const userId of userIds) {
       const fiche = fiches[userId];
       if (fiche.revenu > 0) {
         fiche.argent += fiche.revenu;
         await setFiche(userId, fiche);
-        let username = `<@${userId}>`;
-        rapport.push(`${username} → +${fiche.revenu} kyp (total: ${fiche.argent} kyp)`);
+        rapport.push(`<@${userId}> → +${fiche.revenu} kyp (total: ${fiche.argent} kyp)`);
       }
     }
-    if (rapport.length === 0) {
-      return interaction.reply({
-        content: '☀️ Un jour est passé, mais personne n\'a de revenu configuré.',
-        ephemeral: false
-      });
-    }
-    await interaction.reply({
-      content: `☀️ **Un jour est passé !** Les revenus ont été distribués :\n\n${rapport.join('\n')}`,
-    });
+    if (rapport.length === 0) return interaction.editReply({ content: '☀️ Un jour est passé, mais personne n\'a de revenu configuré.' });
+    await interaction.editReply({ content: `☀️ **Un jour est passé !** Les revenus ont été distribués :\n\n${rapport.join('\n')}` });
   }
 };

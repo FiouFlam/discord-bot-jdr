@@ -2,10 +2,17 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 
 function buildFicheEmbed(fiche, targetUser) {
   const stats = fiche.competences;
+  const vie = fiche.vie ?? 5;
+  const vieMax = fiche.vieMax ?? 5;
+
+  // Barre de vie visuelle
+  const coeursPleins = '❤️'.repeat(vie);
+  const coeursvides = '🖤'.repeat(Math.max(0, vieMax - vie));
+  const vieStr = `${coeursPleins}${coeursvides} (${vie}/${vieMax})`;
 
   const embed = new EmbedBuilder()
     .setTitle(`Fiche personnage de ${targetUser.username}`)
-    .setColor(0x2b2d31)
+    .setColor(vie === 0 ? 0x000000 : 0x2b2d31)
     .addFields(
       { name: 'Nom / Prénom', value: fiche.nom || '—', inline: false },
       { name: 'Âge', value: String(fiche.age) || '—', inline: true },
@@ -17,6 +24,7 @@ function buildFicheEmbed(fiche, targetUser) {
       { name: '🎯 Dextérité', value: `${stats.dexterite} / 20`, inline: true },
       { name: '🍀 Chance', value: `${stats.chance} / 20`, inline: true },
       { name: '\u200B', value: '\u200B', inline: false },
+      { name: '❤️ Vie', value: vieStr, inline: false },
       { name: '💰 Argent', value: `${fiche.argent} kyp`, inline: true },
       { name: '📈 Revenus / jour', value: `${fiche.revenu} kyp`, inline: true },
       { name: '🏡 Propriétés', value: String((fiche.proprietes || []).length), inline: true },
@@ -105,7 +113,7 @@ function buildFicheButtons(userId) {
       .setStyle(ButtonStyle.Danger),
   );
 
-  // Ligne 3 : ➕ Ajouter argent | ➖ Retirer argent | Revenu / jour | Ajouter un champ
+  // Ligne 3 : ➕ Ajouter argent | ➖ Retirer argent | Revenu / jour | Ajouter un champ | Supprimer un champ
   const row3 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`argent_ajouter_${userId}`)
@@ -123,10 +131,23 @@ function buildFicheButtons(userId) {
       .setCustomId(`btn_champ_${userId}`)
       .setLabel('Ajouter un champ')
       .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`btn_suppr_champ_${userId}`)
+      .setLabel('🗑️ Supprimer un champ')
+      .setStyle(ButtonStyle.Secondary),
   );
 
-  // Ligne 4 : Rafraîchir
+  // Ligne 4 : ❤️ +1 Vie | 🖤 -1 Vie | 🔄 Rafraîchir
+  // Secondary (gris) pour différencier des autres couleurs (pas bleu/vert/rouge)
   const row4 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_vie_plus_${userId}`)
+      .setLabel('❤️ +1 Vie')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`btn_vie_moins_${userId}`)
+      .setLabel('🖤 -1 Vie')
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`btn_refresh_${userId}`)
       .setLabel('🔄 Rafraîchir')
@@ -162,6 +183,8 @@ function createDefaultFiche(nom, age, taille, descriptif, competences) {
       dexterite: dexterite || 0,
       chance: chance || 0,
     },
+    vie: 5,
+    vieMax: 5,
     argent: 0,
     revenu: 0,
     proprietes: [],

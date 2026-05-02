@@ -65,16 +65,8 @@ function buildFicheEmbed(fiche, targetUser) {
 }
 
 function buildFicheButtons(userId) {
-  // Ligne 1 : Ajouter propriété | Ajouter objet à propriété | Ajouter objet | Ajouter golem
+  // Ligne 1 : Ajouter objet | Ajouter golem | Ajouter objet à propriété | Ajouter propriété
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`btn_propriete_${userId}`)
-      .setLabel('🏡 Ajouter propriété')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(`btn_objet_propriete_${userId}`)
-      .setLabel('📦 Ajouter objet à propriété')
-      .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`btn_objet_${userId}`)
       .setLabel('Ajouter un objet')
@@ -83,18 +75,18 @@ function buildFicheButtons(userId) {
       .setCustomId(`btn_golem_${userId}`)
       .setLabel('Ajouter golem')
       .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`btn_objet_propriete_${userId}`)
+      .setLabel('📦 Ajouter objet à propriété')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`btn_propriete_${userId}`)
+      .setLabel('🏡 Ajouter propriété')
+      .setStyle(ButtonStyle.Primary),
   );
 
-  // Ligne 2 : Supprimer propriété | Supprimer objet propriété | Supprimer objet | Supprimer golem
+  // Ligne 2 : Supprimer objet | Supprimer golem | Supprimer objet propriété | Supprimer propriété
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`btn_suppr_propriete_${userId}`)
-      .setLabel('🗑️ Supprimer propriété')
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(`btn_suppr_objet_propriete_${userId}`)
-      .setLabel('🗑️ Supprimer objet propriété')
-      .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId(`btn_suppr_objet_${userId}`)
       .setLabel('🗑️ Supprimer objet')
@@ -102,6 +94,14 @@ function buildFicheButtons(userId) {
     new ButtonBuilder()
       .setCustomId(`btn_suppr_golem_${userId}`)
       .setLabel('🗑️ Supprimer golem')
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`btn_suppr_objet_propriete_${userId}`)
+      .setLabel('🗑️ Supprimer objet propriété')
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`btn_suppr_propriete_${userId}`)
+      .setLabel('🗑️ Supprimer propriété')
       .setStyle(ButtonStyle.Danger),
   );
 

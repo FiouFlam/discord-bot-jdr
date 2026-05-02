@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+const { connect } = require('./src/utils/database');
 
 const client = new Client({
   intents: [
@@ -9,7 +10,6 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
   ]
 });
-
 client.commands = new Collection();
 
 // Load commands
@@ -34,4 +34,10 @@ for (const file of eventFiles) {
   }
 }
 
-client.login(process.env.TOKEN);
+// Connexion MongoDB avant de démarrer le bot
+connect().then(() => {
+  client.login(process.env.TOKEN);
+}).catch(err => {
+  console.error('❌ Impossible de se connecter à MongoDB:', err);
+  process.exit(1);
+});

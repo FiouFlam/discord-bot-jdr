@@ -12,7 +12,6 @@ const client = new Client({
 });
 client.commands = new Collection();
 
-// Load commands
 const commandsPath = path.join(__dirname, 'src/commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
@@ -22,7 +21,6 @@ for (const file of commandFiles) {
   }
 }
 
-// Load events
 const eventsPath = path.join(__dirname, 'src/events');
 const eventFiles = fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'));
 for (const file of eventFiles) {
@@ -34,7 +32,6 @@ for (const file of eventFiles) {
   }
 }
 
-// Connexion MongoDB avant de démarrer le bot
 connect().then(() => {
   client.login(process.env.TOKEN);
 }).catch(err => {

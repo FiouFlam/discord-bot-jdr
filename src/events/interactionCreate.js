@@ -1,11 +1,20 @@
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const { getFiche, setFiche, getAllFiches } = require('../utils/database');
-const { buildFicheEmbed, buildFicheButtons, buildNavigationButtons } = require('../utils/ficheBuilder');
+const {
+  buildFicheEmbed,
+  buildFicheButtons,
+  buildNavigationButtons,
+  getInventoryList,
+  resolveInventory,
+  addToInventory,
+  removeFromInventory,
+} = require('../utils/ficheBuilder');
 
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
 
+    // ─── SLASH COMMANDS ────────────────────────────────────────────────────────
     if (interaction.isChatInputCommand()) {
       if (!interaction.memberPermissions?.has('Administrator')) {
         return interaction.reply({ content: '❌ Seuls les administrateurs peuvent utiliser ces commandes.', ephemeral: true });
@@ -17,17 +26,22 @@ module.exports = {
         await command.execute(interaction);
       } catch (err) {
         console.error(err);
-        interaction.deferred ? interaction.editReply({ content: '❌ Une erreur est survenue.' }) : interaction.reply({ content: '❌ Une erreur est survenue.', ephemeral: true });
+        interaction.deferred
+          ? interaction.editReply({ content: '❌ Une erreur est survenue.' })
+          : interaction.reply({ content: '❌ Une erreur est survenue.', ephemeral: true });
       }
       return;
     }
 
+    // ─── BUTTONS ──────────────────────────────────────────────────────────────
     if (interaction.isButton()) {
       if (!interaction.memberPermissions?.has('Administrator')) {
         return interaction.reply({ content: '❌ Seuls les administrateurs peuvent utiliser ces boutons.', ephemeral: true });
       }
       const id = interaction.customId;
+      const messageId = interaction.message.id;
 
+      // Navigation
       if (id.startsWith('nav_prev_') || id.startsWith('nav_next_')) {
         const parts = id.split('_');
         const direction = parts[1];
@@ -48,206 +62,198 @@ module.exports = {
         return interaction.update({ embeds: [embed], components: [...ficheButtons, navButtons] });
       }
 
+      // Refresh
       if (id.startsWith('btn_refresh_')) {
-        const userId = id.replace('btn_refresh_', '');
+        return updateMessage(interaction, id.replace('btn_refresh_', ''), true);
+      }
+
+      // HP +
+      if (id.startsWith('btn_hp_plus_')) {
+        const userId = id.replace('btn_hp_plus_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        fiche.hp = Math.min(5, (fiche.hp ?? 5) + 1);
+        await setFiche(userId, fiche);
         return updateMessage(interaction, userId, true);
       }
 
-      // Pour tous les boutons qui ouvrent un modal, on encode le messageId dans le customId du modal
-      // afin de pouvoir éditer le bon message lors de la soumission.
-      const messageId = interaction.message.id;
+      // HP -
+      if (id.startsWith('btn_hp_minus_')) {
+        const userId = id.replace('btn_hp_minus_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        fiche.hp = Math.max(0, (fiche.hp ?? 5) - 1);
+        await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, true);
+      }
 
-      if (id.startsWith('argent_ajouter_') || id.startsWith('argent_retirer_')) {
-        const action = id.startsWith('argent_ajouter_') ? 'ajouter' : 'retirer';
-        const userId = id.replace(`argent_${action}_`, '');
+      // Ajouter argent
+      if (id.startsWith('argent_ajouter_')) {
+        const userId = id.replace('argent_ajouter_', '');
         const modal = new ModalBuilder()
-          .setCustomId(`modal_argent_${action}_${userId}__${messageId}`)
-          .setTitle(action === 'ajouter' ? '➕ Ajouter de l\'argent' : '➖ Retirer de l\'argent');
+          .setCustomId(`modal_argent_ajouter_${userId}__${messageId}`)
+          .setTitle('💸 Ajouter de l\'argent');
         modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('argent_montant').setLabel('Montant (en kyp)').setStyle(TextInputStyle.Short).setPlaceholder('500').setRequired(true)
+          new TextInputBuilder().setCustomId('montant').setLabel('Montant (en kyp)').setStyle(TextInputStyle.Short).setPlaceholder('500').setRequired(true)
         ));
         return interaction.showModal(modal);
       }
 
-      if (id.startsWith('btn_objet_propriete_')) {
-        const userId = id.replace('btn_objet_propriete_', '');
-        const fiche = await getFiche(userId);
-        if (!fiche || (fiche.proprietes || []).length === 0) return interaction.reply({ content: '❌ Aucune propriété ! Ajoute d\'abord une propriété.', ephemeral: true });
-        const liste = fiche.proprietes.map((p, i) => {
-          const nom = typeof p === 'string' ? p : p.nom;
-          return `${i + 1}. ${nom}`;
-        }).join('\n');
-        const modal = new ModalBuilder().setCustomId(`modal_objet_propriete_${userId}__${messageId}`).setTitle('Ajouter un objet à une propriété');
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('prop_num').setLabel('Numéro de la propriété').setStyle(TextInputStyle.Short).setPlaceholder(liste.substring(0, 100)).setRequired(true)),
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('prop_objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true))
-        );
+      // Retirer argent
+      if (id.startsWith('argent_retirer_')) {
+        const userId = id.replace('argent_retirer_', '');
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_argent_retirer_${userId}__${messageId}`)
+          .setTitle('💸 Retirer de l\'argent');
+        modal.addComponents(new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('montant').setLabel('Montant (en kyp)').setStyle(TextInputStyle.Short).setPlaceholder('500').setRequired(true)
+        ));
         return interaction.showModal(modal);
       }
 
-      if (id.startsWith('btn_objet_')) {
-        const userId = id.replace('btn_objet_', '');
-        const modal = new ModalBuilder().setCustomId(`modal_objet_${userId}__${messageId}`).setTitle('Ajouter un objet');
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)),
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_niveau').setLabel('Niveau de l\'objet (optionnel)').setStyle(TextInputStyle.Short).setPlaceholder('ex: 1').setRequired(false))
-        );
-        return interaction.showModal(modal);
-      }
-
-      if (id.startsWith('btn_golem_')) {
-        const userId = id.replace('btn_golem_', '');
-        const modal = new ModalBuilder().setCustomId(`modal_golem_${userId}__${messageId}`).setTitle('Ajouter un golem');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('golem_input').setLabel('Nom du golem').setStyle(TextInputStyle.Short).setRequired(true)));
-        return interaction.showModal(modal);
-      }
-
-      if (id.startsWith('btn_propriete_')) {
-        const userId = id.replace('btn_propriete_', '');
-        const modal = new ModalBuilder().setCustomId(`modal_propriete_${userId}__${messageId}`).setTitle('Ajouter une propriété');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('propriete_input').setLabel('Nom de la propriété').setStyle(TextInputStyle.Short).setRequired(true)));
-        return interaction.showModal(modal);
-      }
-
+      // Revenu / jour
       if (id.startsWith('btn_revenu_')) {
         const userId = id.replace('btn_revenu_', '');
         const fiche = await getFiche(userId);
-        const modal = new ModalBuilder().setCustomId(`modal_revenu_${userId}__${messageId}`).setTitle('Revenu journalier');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('revenu_input').setLabel('Revenu par jour (en kyp)').setStyle(TextInputStyle.Short).setPlaceholder(String(fiche?.revenu || 0)).setRequired(true)));
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_revenu_${userId}__${messageId}`)
+          .setTitle('🪙 Revenu journalier');
+        modal.addComponents(new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('revenu_input').setLabel('Revenu par jour (en kyp)').setStyle(TextInputStyle.Short).setPlaceholder(String(fiche?.revenu ?? 0)).setRequired(true)
+        ));
         return interaction.showModal(modal);
       }
 
-      if (id.startsWith('btn_champ_')) {
-        const userId = id.replace('btn_champ_', '');
-        const modal = new ModalBuilder().setCustomId(`modal_champ_${userId}__${messageId}`).setTitle('Ajouter un champ personnalisé');
+      // ➕ Ajouter objet
+      if (id.startsWith('btn_ajouter_')) {
+        const userId = id.replace('btn_ajouter_', '');
+        const fiche = await getFiche(userId);
+        const invList = fiche ? getInventoryList(fiche).join(', ') : 'perso';
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_ajouter_${userId}__${messageId}`)
+          .setTitle('➕ Ajouter un objet');
         modal.addComponents(
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('champ_nom').setLabel('Nom du champ').setStyle(TextInputStyle.Short).setRequired(true)),
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('champ_valeur').setLabel('Contenu initial (optionnel)').setStyle(TextInputStyle.Paragraph).setRequired(false))
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+          ),
         );
         return interaction.showModal(modal);
       }
 
-      if (id.startsWith('btn_suppr_objet_propriete_')) {
-        const userId = id.replace('btn_suppr_objet_propriete_', '');
+      // ➖ Supprimer objet
+      if (id.startsWith('btn_supprimer_')) {
+        const userId = id.replace('btn_supprimer_', '');
         const fiche = await getFiche(userId);
-        if (!fiche || (fiche.proprietes || []).length === 0) return interaction.reply({ content: '❌ Aucune propriété !', ephemeral: true });
-        const liste = fiche.proprietes.map((p, i) => {
-          const nom = typeof p === 'string' ? p : p.nom;
-          return `${i + 1}. ${nom}`;
-        }).join('\n');
-        const modal = new ModalBuilder().setCustomId(`modal_suppr_objet_propriete_${userId}__${messageId}`).setTitle('Supprimer un objet d\'une propriété');
+        const invList = fiche ? getInventoryList(fiche).join(', ') : 'perso';
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_supprimer_${userId}__${messageId}`)
+          .setTitle('➖ Supprimer un objet');
         modal.addComponents(
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('prop_num').setLabel('Numéro de la propriété').setStyle(TextInputStyle.Short).setPlaceholder(liste.substring(0, 100)).setRequired(true)),
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('prop_objet_num').setLabel('Numéro de l\'objet à supprimer').setStyle(TextInputStyle.Short).setRequired(true))
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité à enlever').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+          ),
         );
         return interaction.showModal(modal);
       }
 
-      if (id.startsWith('btn_suppr_objet_')) {
-        const userId = id.replace('btn_suppr_objet_', '');
+      // 🔁 Transférer
+      if (id.startsWith('btn_transferer_')) {
+        const userId = id.replace('btn_transferer_', '');
         const fiche = await getFiche(userId);
-        if (!fiche || fiche.inventaire.length === 0) return interaction.reply({ content: '❌ L\'inventaire est vide !', ephemeral: true });
-        const liste = fiche.inventaire.map((o, i) => `${i + 1}. ${o.nom}${o.niveau != null ? ` (niv.${o.niveau})` : ''}`).join('\n');
-        const modal = new ModalBuilder().setCustomId(`modal_suppr_objet_${userId}__${messageId}`).setTitle('Supprimer un objet');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('suppr_objet_num').setLabel('Numéro de l\'objet à supprimer').setStyle(TextInputStyle.Short).setPlaceholder(liste.substring(0, 100)).setRequired(true)));
+        const invList = fiche ? getInventoryList(fiche).join(', ') : 'perso';
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_transferer_${userId}__${messageId}`)
+          .setTitle('🔁 Transférer un objet');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('source').setLabel('Source').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('destination').setLabel('Destination').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+          ),
+        );
         return interaction.showModal(modal);
       }
 
-      if (id.startsWith('btn_suppr_propriete_')) {
-        const userId = id.replace('btn_suppr_propriete_', '');
+      // 💰 Vendre
+      if (id.startsWith('btn_vendre_')) {
+        const userId = id.replace('btn_vendre_', '');
         const fiche = await getFiche(userId);
-        if (!fiche || fiche.proprietes.length === 0) return interaction.reply({ content: '❌ Aucune propriété !', ephemeral: true });
-        const liste = fiche.proprietes.map((p, i) => {
-          const nom = typeof p === 'string' ? p : p.nom;
-          return `${i + 1}. ${nom}`;
-        }).join('\n');
-        const modal = new ModalBuilder().setCustomId(`modal_suppr_propriete_${userId}__${messageId}`).setTitle('Supprimer une propriété');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('suppr_propriete_num').setLabel('Numéro de la propriété à supprimer').setStyle(TextInputStyle.Short).setPlaceholder(liste.substring(0, 100)).setRequired(true)));
-        return interaction.showModal(modal);
-      }
-
-      if (id.startsWith('btn_suppr_golem_')) {
-        const userId = id.replace('btn_suppr_golem_', '');
-        const fiche = await getFiche(userId);
-        if (!fiche || fiche.golems.length === 0) return interaction.reply({ content: '❌ Aucun golem !', ephemeral: true });
-        const liste = fiche.golems.map((g, i) => `${i + 1}. ${g}`).join('\n');
-        const modal = new ModalBuilder().setCustomId(`modal_suppr_golem_${userId}__${messageId}`).setTitle('Supprimer un golem');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('suppr_golem_num').setLabel('Numéro du golem à supprimer').setStyle(TextInputStyle.Short).setPlaceholder(liste.substring(0, 100)).setRequired(true)));
+        const invList = fiche ? getInventoryList(fiche).join(', ') : 'perso';
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_vendre_${userId}__${messageId}`)
+          .setTitle('💰 Vendre un objet');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('prix').setLabel('Prix de vente total (kyp)').setStyle(TextInputStyle.Short).setPlaceholder('100').setRequired(true)
+          ),
+        );
         return interaction.showModal(modal);
       }
     }
 
+    // ─── MODAL SUBMITS ─────────────────────────────────────────────────────────
     if (interaction.isModalSubmit()) {
       if (!interaction.memberPermissions?.has('Administrator')) {
         return interaction.reply({ content: '❌ Seuls les administrateurs peuvent utiliser ces actions.', ephemeral: true });
       }
       const id = interaction.customId;
-
-      // Extraire le messageId encodé à la fin du customId (après "__")
       const sepIdx = id.lastIndexOf('__');
       const messageId = sepIdx !== -1 ? id.slice(sepIdx + 2) : null;
-      const baseId = sepIdx !== -1 ? id.slice(0, sepIdx) : id;
+      const baseId   = sepIdx !== -1 ? id.slice(0, sepIdx) : id;
 
-      if (baseId.startsWith('modal_argent_')) {
-        const parts = baseId.replace('modal_argent_', '').split('_');
-        const action = parts[0];
-        const userId = parts.slice(1).join('_');
+      // Argent ajouter
+      if (baseId.startsWith('modal_argent_ajouter_')) {
+        const userId = baseId.replace('modal_argent_ajouter_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const montant = parseInt(interaction.fields.getTextInputValue('argent_montant').trim());
+        const montant = parseInt(interaction.fields.getTextInputValue('montant').trim());
         if (isNaN(montant) || montant <= 0) return interaction.reply({ content: '❌ Montant invalide !', ephemeral: true });
-        fiche.argent = action === 'ajouter' ? fiche.argent + montant : Math.max(0, fiche.argent - montant);
+        fiche.argent = (fiche.argent ?? 0) + montant;
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      if (baseId.startsWith('modal_objet_propriete_')) {
-        const userId = baseId.replace('modal_objet_propriete_', '');
+      // Argent retirer
+      if (baseId.startsWith('modal_argent_retirer_')) {
+        const userId = baseId.replace('modal_argent_retirer_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const propNum = parseInt(interaction.fields.getTextInputValue('prop_num')) - 1;
-        if (isNaN(propNum) || propNum < 0 || propNum >= fiche.proprietes.length) return interaction.reply({ content: '❌ Numéro de propriété invalide !', ephemeral: true });
-        const objetNom = interaction.fields.getTextInputValue('prop_objet_nom').trim();
-        if (typeof fiche.proprietes[propNum] === 'string') {
-          fiche.proprietes[propNum] = { nom: fiche.proprietes[propNum], objets: [] };
-        }
-        if (!fiche.proprietes[propNum].objets) fiche.proprietes[propNum].objets = [];
-        fiche.proprietes[propNum].objets.push(objetNom);
+        const montant = parseInt(interaction.fields.getTextInputValue('montant').trim());
+        if (isNaN(montant) || montant <= 0) return interaction.reply({ content: '❌ Montant invalide !', ephemeral: true });
+        fiche.argent = Math.max(0, (fiche.argent ?? 0) - montant);
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      if (baseId.startsWith('modal_objet_')) {
-        const userId = baseId.replace('modal_objet_', '');
-        const fiche = await getFiche(userId);
-        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const nom = interaction.fields.getTextInputValue('objet_nom');
-        const niveauRaw = interaction.fields.getTextInputValue('objet_niveau').trim();
-        const niveau = niveauRaw !== '' ? parseInt(niveauRaw) : null;
-        if (niveauRaw !== '' && (isNaN(niveau) || niveau < 1)) return interaction.reply({ content: '❌ Niveau invalide !', ephemeral: true });
-        fiche.inventaire.push({ nom, niveau });
-        await setFiche(userId, fiche);
-        return updateMessage(interaction, userId, false, messageId);
-      }
-
-      if (baseId.startsWith('modal_golem_')) {
-        const userId = baseId.replace('modal_golem_', '');
-        const fiche = await getFiche(userId);
-        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        fiche.golems.push(interaction.fields.getTextInputValue('golem_input'));
-        await setFiche(userId, fiche);
-        return updateMessage(interaction, userId, false, messageId);
-      }
-
-      if (baseId.startsWith('modal_propriete_')) {
-        const userId = baseId.replace('modal_propriete_', '');
-        const fiche = await getFiche(userId);
-        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        fiche.proprietes.push({ nom: interaction.fields.getTextInputValue('propriete_input'), objets: [] });
-        await setFiche(userId, fiche);
-        return updateMessage(interaction, userId, false, messageId);
-      }
-
+      // Revenu
       if (baseId.startsWith('modal_revenu_')) {
         const userId = baseId.replace('modal_revenu_', '');
         const fiche = await getFiche(userId);
@@ -259,60 +265,72 @@ module.exports = {
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      if (baseId.startsWith('modal_champ_')) {
-        const userId = baseId.replace('modal_champ_', '');
+      // ➕ Ajouter
+      if (baseId.startsWith('modal_ajouter_')) {
+        const userId = baseId.replace('modal_ajouter_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        if (!fiche.champsCustom) fiche.champsCustom = [];
-        fiche.champsCustom.push({ nom: interaction.fields.getTextInputValue('champ_nom'), valeur: interaction.fields.getTextInputValue('champ_valeur') || '' });
+        const invName  = interaction.fields.getTextInputValue('inventaire').trim();
+        const objetNom = interaction.fields.getTextInputValue('objet_nom').trim();
+        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+        const inv = resolveInventory(fiche, invName);
+        if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
+        addToInventory(inv.arr, objetNom, quantite, inv.type);
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      if (baseId.startsWith('modal_suppr_objet_propriete_')) {
-        const userId = baseId.replace('modal_suppr_objet_propriete_', '');
+      // ➖ Supprimer
+      if (baseId.startsWith('modal_supprimer_')) {
+        const userId = baseId.replace('modal_supprimer_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const propNum = parseInt(interaction.fields.getTextInputValue('prop_num')) - 1;
-        if (isNaN(propNum) || propNum < 0 || propNum >= fiche.proprietes.length) return interaction.reply({ content: '❌ Numéro de propriété invalide !', ephemeral: true });
-        const prop = fiche.proprietes[propNum];
-        if (typeof prop === 'string' || !prop.objets || prop.objets.length === 0) return interaction.reply({ content: '❌ Cette propriété n\'a aucun objet !', ephemeral: true });
-        const objNum = parseInt(interaction.fields.getTextInputValue('prop_objet_num')) - 1;
-        if (isNaN(objNum) || objNum < 0 || objNum >= prop.objets.length) return interaction.reply({ content: '❌ Numéro d\'objet invalide !', ephemeral: true });
-        fiche.proprietes[propNum].objets.splice(objNum, 1);
+        const invName  = interaction.fields.getTextInputValue('inventaire').trim();
+        const objetNom = interaction.fields.getTextInputValue('objet_nom').trim();
+        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+        const inv = resolveInventory(fiche, invName);
+        if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
+        const err = removeFromInventory(inv.arr, objetNom, quantite, inv.type);
+        if (err) return interaction.reply({ content: err, ephemeral: true });
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      if (baseId.startsWith('modal_suppr_objet_')) {
-        const userId = baseId.replace('modal_suppr_objet_', '');
+      // 🔁 Transférer
+      if (baseId.startsWith('modal_transferer_')) {
+        const userId = baseId.replace('modal_transferer_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const num = parseInt(interaction.fields.getTextInputValue('suppr_objet_num')) - 1;
-        if (isNaN(num) || num < 0 || num >= fiche.inventaire.length) return interaction.reply({ content: '❌ Numéro invalide !', ephemeral: true });
-        fiche.inventaire.splice(num, 1);
+        const srcName  = interaction.fields.getTextInputValue('source').trim();
+        const dstName  = interaction.fields.getTextInputValue('destination').trim();
+        const objetNom = interaction.fields.getTextInputValue('objet_nom').trim();
+        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+        const src = resolveInventory(fiche, srcName);
+        if (!src) return interaction.reply({ content: `❌ Source "${srcName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
+        const dst = resolveInventory(fiche, dstName);
+        if (!dst) return interaction.reply({ content: `❌ Destination "${dstName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
+        const err = removeFromInventory(src.arr, objetNom, quantite, src.type);
+        if (err) return interaction.reply({ content: err, ephemeral: true });
+        addToInventory(dst.arr, objetNom, quantite, dst.type);
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      if (baseId.startsWith('modal_suppr_propriete_')) {
-        const userId = baseId.replace('modal_suppr_propriete_', '');
+      // 💰 Vendre
+      if (baseId.startsWith('modal_vendre_')) {
+        const userId = baseId.replace('modal_vendre_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const num = parseInt(interaction.fields.getTextInputValue('suppr_propriete_num')) - 1;
-        if (isNaN(num) || num < 0 || num >= fiche.proprietes.length) return interaction.reply({ content: '❌ Numéro invalide !', ephemeral: true });
-        fiche.proprietes.splice(num, 1);
-        await setFiche(userId, fiche);
-        return updateMessage(interaction, userId, false, messageId);
-      }
-
-      if (baseId.startsWith('modal_suppr_golem_')) {
-        const userId = baseId.replace('modal_suppr_golem_', '');
-        const fiche = await getFiche(userId);
-        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const num = parseInt(interaction.fields.getTextInputValue('suppr_golem_num')) - 1;
-        if (isNaN(num) || num < 0 || num >= fiche.golems.length) return interaction.reply({ content: '❌ Numéro invalide !', ephemeral: true });
-        fiche.golems.splice(num, 1);
+        const invName  = interaction.fields.getTextInputValue('inventaire').trim();
+        const objetNom = interaction.fields.getTextInputValue('objet_nom').trim();
+        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+        const prix     = parseInt(interaction.fields.getTextInputValue('prix').trim());
+        if (isNaN(prix) || prix < 0) return interaction.reply({ content: '❌ Prix invalide !', ephemeral: true });
+        const inv = resolveInventory(fiche, invName);
+        if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
+        const err = removeFromInventory(inv.arr, objetNom, quantite, inv.type);
+        if (err) return interaction.reply({ content: err, ephemeral: true });
+        fiche.argent = (fiche.argent ?? 0) + prix;
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
@@ -320,16 +338,17 @@ module.exports = {
   }
 };
 
+// ─── Helper updateMessage ──────────────────────────────────────────────────────
 async function updateMessage(interaction, userId, isButton = false, messageId = null) {
   const fiche = await getFiche(userId);
   let targetUser;
   try { targetUser = await interaction.client.users.fetch(userId); }
   catch { targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null }; }
+
   const embed = buildFicheEmbed(fiche, targetUser);
   const buttons = buildFicheButtons(userId);
 
   if (isButton) {
-    // Bouton direct : interaction.message est disponible, on utilise update()
     const msg = interaction.message;
     let components = [...buttons];
     if (msg && msg.components.length > buttons.length) {
@@ -338,12 +357,9 @@ async function updateMessage(interaction, userId, isButton = false, messageId = 
     return interaction.update({ embeds: [embed], components });
   }
 
-  // Modal submit : interaction.message est null.
-  // On acquitte d'abord l'interaction, puis on édite le message original via le channel.
   await interaction.deferUpdate();
 
   if (!messageId || !interaction.channel) {
-    // Pas de messageId disponible : on ne peut qu'envoyer un message éphémère
     return interaction.followUp({ content: '✅ Mis à jour !', ephemeral: true });
   }
 
@@ -355,7 +371,7 @@ async function updateMessage(interaction, userId, isButton = false, messageId = 
     }
     await msg.edit({ embeds: [embed], components });
   } catch (e) {
-    console.error('Erreur lors de l\'édition du message:', e);
-    await interaction.followUp({ content: '✅ Mis à jour (impossible d\'éditer le message) !', ephemeral: true });
+    console.error('Erreur édition message:', e);
+    await interaction.followUp({ content: '✅ Mis à jour (impossible d\'éditer le message).', ephemeral: true });
   }
 }

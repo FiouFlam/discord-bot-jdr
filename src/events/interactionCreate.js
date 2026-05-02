@@ -5,9 +5,12 @@ const {
   buildFicheButtons,
   buildNavigationButtons,
   getInventoryList,
+  getInventoryListLabels,
   resolveInventory,
+  resolveInventoryByLabel,
   addToInventory,
   removeFromInventory,
+  removeFromInventoryByIndex,
 } = require('../utils/ficheBuilder');
 
 module.exports = {
@@ -46,10 +49,15 @@ module.exports = {
         const parts = id.split('_');
         const direction = parts[1];
         const currentIndex = parseInt(parts[2]);
-        const newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
         const fiches = await getAllFiches();
         const userIds = Object.keys(fiches);
-        if (newIndex < 0 || newIndex >= userIds.length) return interaction.deferUpdate();
+        // Navigation circulaire
+        let newIndex;
+        if (direction === 'next') {
+          newIndex = (currentIndex + 1) % userIds.length;
+        } else {
+          newIndex = (currentIndex - 1 + userIds.length) % userIds.length;
+        }
         const userId = userIds[newIndex];
         const fiche = fiches[userId];
         let targetUser;
@@ -128,13 +136,13 @@ module.exports = {
       if (id.startsWith('btn_ajouter_')) {
         const userId = id.replace('btn_ajouter_', '');
         const fiche = await getFiche(userId);
-        const invList = fiche ? getInventoryList(fiche).join(', ') : 'perso';
+        const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
         const modal = new ModalBuilder()
           .setCustomId(`modal_ajouter_${userId}__${messageId}`)
           .setTitle('➕ Ajouter un objet');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+            new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
             new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)
@@ -150,16 +158,16 @@ module.exports = {
       if (id.startsWith('btn_supprimer_')) {
         const userId = id.replace('btn_supprimer_', '');
         const fiche = await getFiche(userId);
-        const invList = fiche ? getInventoryList(fiche).join(', ') : 'perso';
+        const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
         const modal = new ModalBuilder()
           .setCustomId(`modal_supprimer_${userId}__${messageId}`)
           .setTitle('➖ Supprimer un objet');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+            new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('objet_numero').setLabel('Numéro de l\'objet (dans l\'inventaire)').setStyle(TextInputStyle.Short).setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
             new TextInputBuilder().setCustomId('quantite').setLabel('Quantité à enlever').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
@@ -172,22 +180,39 @@ module.exports = {
       if (id.startsWith('btn_transferer_')) {
         const userId = id.replace('btn_transferer_', '');
         const fiche = await getFiche(userId);
-        const invList = fiche ? getInventoryList(fiche).join(', ') : 'perso';
+        const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
         const modal = new ModalBuilder()
           .setCustomId(`modal_transferer_${userId}__${messageId}`)
           .setTitle('🔁 Transférer un objet');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('source').setLabel('Source').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+            new TextInputBuilder().setCustomId('source').setLabel('Source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('destination').setLabel('Destination').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+            new TextInputBuilder().setCustomId('destination').setLabel('Destination (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('objet_numero').setLabel('Numéro de l\'objet (source)').setStyle(TextInputStyle.Short).setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
             new TextInputBuilder().setCustomId('quantite').setLabel('Quantité').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+          ),
+        );
+        return interaction.showModal(modal);
+      }
+
+      // 💳 Transférer argent
+      if (id.startsWith('btn_transfert_argent_')) {
+        const userId = id.replace('btn_transfert_argent_', '');
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_transfert_argent_${userId}__${messageId}`)
+          .setTitle('💳 Transférer de l\'argent');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('cible_id').setLabel('ID Discord du destinataire').setStyle(TextInputStyle.Short).setPlaceholder('123456789012345678').setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('montant').setLabel('Montant (en kyp)').setStyle(TextInputStyle.Short).setPlaceholder('500').setRequired(true)
           ),
         );
         return interaction.showModal(modal);
@@ -197,16 +222,16 @@ module.exports = {
       if (id.startsWith('btn_vendre_')) {
         const userId = id.replace('btn_vendre_', '');
         const fiche = await getFiche(userId);
-        const invList = fiche ? getInventoryList(fiche).join(', ') : 'perso';
+        const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
         const modal = new ModalBuilder()
           .setCustomId(`modal_vendre_${userId}__${messageId}`)
           .setTitle('💰 Vendre un objet');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(true)
+            new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('objet_numero').setLabel('Numéro de l\'objet (dans l\'inventaire)').setStyle(TextInputStyle.Short).setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
             new TextInputBuilder().setCustomId('quantite').setLabel('Quantité').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
@@ -270,11 +295,11 @@ module.exports = {
         const userId = baseId.replace('modal_ajouter_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const invName  = interaction.fields.getTextInputValue('inventaire').trim();
+        const invName  = interaction.fields.getTextInputValue('inventaire').trim() || 'perso';
         const objetNom = interaction.fields.getTextInputValue('objet_nom').trim();
         const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
-        const inv = resolveInventory(fiche, invName);
-        if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
+        const inv = resolveInventoryByLabel(fiche, invName);
+        if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
         addToInventory(inv.arr, objetNom, quantite, inv.type);
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
@@ -285,12 +310,13 @@ module.exports = {
         const userId = baseId.replace('modal_supprimer_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const invName  = interaction.fields.getTextInputValue('inventaire').trim();
-        const objetNom = interaction.fields.getTextInputValue('objet_nom').trim();
-        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
-        const inv = resolveInventory(fiche, invName);
-        if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
-        const err = removeFromInventory(inv.arr, objetNom, quantite, inv.type);
+        const invName   = interaction.fields.getTextInputValue('inventaire').trim() || 'perso';
+        const objetNum  = parseInt(interaction.fields.getTextInputValue('objet_numero').trim());
+        const quantite  = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+        const inv = resolveInventoryByLabel(fiche, invName);
+        if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
+        if (isNaN(objetNum) || objetNum < 1 || objetNum > inv.arr.length) return interaction.reply({ content: `❌ Numéro invalide. L'inventaire contient ${inv.arr.length} objet(s).`, ephemeral: true });
+        const err = removeFromInventoryByIndex(inv.arr, objetNum - 1, quantite, inv.type);
         if (err) return interaction.reply({ content: err, ephemeral: true });
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
@@ -301,18 +327,39 @@ module.exports = {
         const userId = baseId.replace('modal_transferer_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const srcName  = interaction.fields.getTextInputValue('source').trim();
-        const dstName  = interaction.fields.getTextInputValue('destination').trim();
-        const objetNom = interaction.fields.getTextInputValue('objet_nom').trim();
+        const srcName  = interaction.fields.getTextInputValue('source').trim() || 'perso';
+        const dstName  = interaction.fields.getTextInputValue('destination').trim() || 'perso';
+        const objetNum = parseInt(interaction.fields.getTextInputValue('objet_numero').trim());
         const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
-        const src = resolveInventory(fiche, srcName);
-        if (!src) return interaction.reply({ content: `❌ Source "${srcName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
-        const dst = resolveInventory(fiche, dstName);
-        if (!dst) return interaction.reply({ content: `❌ Destination "${dstName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
-        const err = removeFromInventory(src.arr, objetNom, quantite, src.type);
+        const src = resolveInventoryByLabel(fiche, srcName);
+        if (!src) return interaction.reply({ content: `❌ Source "${srcName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
+        const dst = resolveInventoryByLabel(fiche, dstName);
+        if (!dst) return interaction.reply({ content: `❌ Destination "${dstName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
+        if (isNaN(objetNum) || objetNum < 1 || objetNum > src.arr.length) return interaction.reply({ content: `❌ Numéro invalide. La source contient ${src.arr.length} objet(s).`, ephemeral: true });
+        const obj = src.arr[objetNum - 1];
+        const nom = (typeof obj === 'string') ? obj : (obj.nom || '???');
+        const err = removeFromInventoryByIndex(src.arr, objetNum - 1, quantite, src.type);
         if (err) return interaction.reply({ content: err, ephemeral: true });
-        addToInventory(dst.arr, objetNom, quantite, dst.type);
+        addToInventory(dst.arr, nom, quantite, dst.type);
         await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, false, messageId);
+      }
+
+      // 💳 Transférer argent
+      if (baseId.startsWith('modal_transfert_argent_')) {
+        const userId = baseId.replace('modal_transfert_argent_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        const cibleId = interaction.fields.getTextInputValue('cible_id').trim();
+        const montant = parseInt(interaction.fields.getTextInputValue('montant').trim());
+        if (isNaN(montant) || montant <= 0) return interaction.reply({ content: '❌ Montant invalide !', ephemeral: true });
+        const ficheCible = await getFiche(cibleId);
+        if (!ficheCible) return interaction.reply({ content: `❌ Fiche du joueur "${cibleId}" introuvable.`, ephemeral: true });
+        if ((fiche.argent ?? 0) < montant) return interaction.reply({ content: `❌ Fonds insuffisants ! Solde : ${fiche.argent ?? 0} kyp.`, ephemeral: true });
+        fiche.argent = (fiche.argent ?? 0) - montant;
+        ficheCible.argent = (ficheCible.argent ?? 0) + montant;
+        await setFiche(userId, fiche);
+        await setFiche(cibleId, ficheCible);
         return updateMessage(interaction, userId, false, messageId);
       }
 
@@ -321,14 +368,15 @@ module.exports = {
         const userId = baseId.replace('modal_vendre_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const invName  = interaction.fields.getTextInputValue('inventaire').trim();
-        const objetNom = interaction.fields.getTextInputValue('objet_nom').trim();
+        const invName  = interaction.fields.getTextInputValue('inventaire').trim() || 'perso';
+        const objetNum = parseInt(interaction.fields.getTextInputValue('objet_numero').trim());
         const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
         const prix     = parseInt(interaction.fields.getTextInputValue('prix').trim());
         if (isNaN(prix) || prix < 0) return interaction.reply({ content: '❌ Prix invalide !', ephemeral: true });
-        const inv = resolveInventory(fiche, invName);
-        if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryList(fiche).join(', ')}`, ephemeral: true });
-        const err = removeFromInventory(inv.arr, objetNom, quantite, inv.type);
+        const inv = resolveInventoryByLabel(fiche, invName);
+        if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
+        if (isNaN(objetNum) || objetNum < 1 || objetNum > inv.arr.length) return interaction.reply({ content: `❌ Numéro invalide. L'inventaire contient ${inv.arr.length} objet(s).`, ephemeral: true });
+        const err = removeFromInventoryByIndex(inv.arr, objetNum - 1, quantite, inv.type);
         if (err) return interaction.reply({ content: err, ephemeral: true });
         fiche.argent = (fiche.argent ?? 0) + prix;
         await setFiche(userId, fiche);

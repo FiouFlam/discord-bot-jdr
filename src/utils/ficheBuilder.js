@@ -1,9 +1,17 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 
-// ─── Formate une liste d'items — 1 par ligne, numérotés séquentiellement ──────
+// ─── Formate une liste d'items — 3 par ligne, numérotés séquentiellement ──────
 function formatItemList(items, formatter) {
   if (!items || items.length === 0) return '*(vide)*';
-  return items.map((item, i) => formatter(item, i)).join('\n');
+  const lines = [];
+  for (let i = 0; i < items.length; i += 3) {
+    const parts = [];
+    for (let j = i; j < Math.min(i + 3, items.length); j++) {
+      parts.push(formatter(items[j], j));
+    }
+    lines.push(parts.join(' | '));
+  }
+  return lines.join('\n');
 }
 
 // Formateur objet perso/golem : { nom, quantite?, niveau? }

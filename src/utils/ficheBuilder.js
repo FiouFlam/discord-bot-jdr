@@ -1,11 +1,11 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+cat > /home/claude/bot/src/utils/ficheBuilder.js << 'EOF'
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 
 function buildFicheEmbed(fiche, targetUser) {
   const stats = fiche.competences;
   const vie = fiche.vie ?? 5;
   const vieMax = fiche.vieMax ?? 5;
 
-  // Barre de vie visuelle
   const coeursPleins = '❤️'.repeat(vie);
   const coeursvides = '🖤'.repeat(Math.max(0, vieMax - vie));
   const vieStr = `${coeursPleins}${coeursvides} (${vie}/${vieMax})`;
@@ -35,7 +35,6 @@ function buildFicheEmbed(fiche, targetUser) {
     embed.setThumbnail(targetUser.displayAvatarURL());
   }
 
-  // Inventaire objets
   const inventaire = (fiche.inventaire || []).length > 0
     ? fiche.inventaire.map((obj, i) => {
         const niv = obj.niveau != null ? ` *(niv. ${obj.niveau})*` : '';
@@ -44,7 +43,6 @@ function buildFicheEmbed(fiche, targetUser) {
     : '*(vide)*';
   embed.addFields({ name: '🎒 Inventaire', value: inventaire, inline: false });
 
-  // Propriétés avec leurs objets
   if ((fiche.proprietes || []).length > 0) {
     for (let i = 0; i < fiche.proprietes.length; i++) {
       const p = fiche.proprietes[i];
@@ -58,13 +56,11 @@ function buildFicheEmbed(fiche, targetUser) {
     embed.addFields({ name: '🏡 Propriétés', value: '*(vide)*', inline: false });
   }
 
-  // Golems
   const golems = (fiche.golems || []).length > 0
     ? fiche.golems.map((g, i) => `${i + 1}. ${g}`).join('\n')
     : '*(vide)*';
   embed.addFields({ name: '🪨 Liste des golems', value: golems, inline: false });
 
-  // Champs custom
   for (const champ of fiche.champsCustom || []) {
     embed.addFields({ name: champ.nom, value: champ.valeur || '*(vide)*', inline: false });
   }
@@ -73,63 +69,27 @@ function buildFicheEmbed(fiche, targetUser) {
 }
 
 function buildFicheButtons(userId) {
-  // Ligne 1 : Ajouter objet | Ajouter golem | Ajouter objet à propriété | Ajouter propriété
+  // Ligne 1 : Ajouter | Supprimer (ouvrent chacun un select menu éphémère)
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`btn_objet_${userId}`)
-      .setLabel('Ajouter un objet')
+      .setCustomId(`btn_menu_ajouter_${userId}`)
+      .setLabel('➕ Ajouter')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId(`btn_golem_${userId}`)
-      .setLabel('Ajouter golem')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(`btn_objet_propriete_${userId}`)
-      .setLabel('📦 Ajouter objet à propriété')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(`btn_propriete_${userId}`)
-      .setLabel('🏡 Ajouter propriété')
-      .setStyle(ButtonStyle.Primary),
+      .setCustomId(`btn_menu_supprimer_${userId}`)
+      .setLabel('🗑️ Supprimer')
+      .setStyle(ButtonStyle.Danger),
   );
 
-  // Ligne 2 : Supprimer objet | Supprimer golem | Supprimer objet propriété | Supprimer propriété
+  // Ligne 2 : Revenu / jour | Ajouter un champ | Supprimer un champ
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`btn_suppr_objet_${userId}`)
-      .setLabel('🗑️ Supprimer objet')
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(`btn_suppr_golem_${userId}`)
-      .setLabel('🗑️ Supprimer golem')
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(`btn_suppr_objet_propriete_${userId}`)
-      .setLabel('🗑️ Supprimer objet propriété')
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(`btn_suppr_propriete_${userId}`)
-      .setLabel('🗑️ Supprimer propriété')
-      .setStyle(ButtonStyle.Danger),
-  );
-
-  // Ligne 3 : ➕ Ajouter argent | ➖ Retirer argent | Revenu / jour | Ajouter un champ | Supprimer un champ
-  const row3 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`argent_ajouter_${userId}`)
-      .setLabel('➕ Ajouter argent')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`argent_retirer_${userId}`)
-      .setLabel('➖ Retirer argent')
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
       .setCustomId(`btn_revenu_${userId}`)
-      .setLabel('Revenu / jour')
+      .setLabel('📈 Revenu / jour')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`btn_champ_${userId}`)
-      .setLabel('Ajouter un champ')
+      .setLabel('➕ Ajouter un champ')
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`btn_suppr_champ_${userId}`)
@@ -137,9 +97,8 @@ function buildFicheButtons(userId) {
       .setStyle(ButtonStyle.Secondary),
   );
 
-  // Ligne 4 : ❤️ +1 Vie | 🖤 -1 Vie | 🔄 Rafraîchir
-  // Secondary (gris) pour différencier des autres couleurs (pas bleu/vert/rouge)
-  const row4 = new ActionRowBuilder().addComponents(
+  // Ligne 3 : Vie
+  const row3 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`btn_vie_plus_${userId}`)
       .setLabel('❤️ +1 Vie')
@@ -148,13 +107,37 @@ function buildFicheButtons(userId) {
       .setCustomId(`btn_vie_moins_${userId}`)
       .setLabel('🖤 -1 Vie')
       .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`btn_refresh_${userId}`)
-      .setLabel('🔄 Rafraîchir')
-      .setStyle(ButtonStyle.Secondary),
   );
 
-  return [row1, row2, row3, row4];
+  return [row1, row2, row3];
+}
+
+function buildSelectMenuAjouter(userId) {
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`select_ajouter_${userId}`)
+    .setPlaceholder('Fais un choix...')
+    .addOptions([
+      { label: 'Objet', description: "Ajouter un objet à l'inventaire", value: `ajouter_objet_${userId}`, emoji: '🎒' },
+      { label: 'Golem', description: 'Ajouter un golem', value: `ajouter_golem_${userId}`, emoji: '🪨' },
+      { label: 'Objet à une propriété', description: 'Ajouter un objet dans une propriété existante', value: `ajouter_objet_prop_${userId}`, emoji: '📦' },
+      { label: 'Propriété', description: 'Ajouter une nouvelle propriété', value: `ajouter_propriete_${userId}`, emoji: '🏡' },
+      { label: 'Argent', description: "Ajouter de l'argent au personnage", value: `ajouter_argent_${userId}`, emoji: '💰' },
+    ]);
+  return new ActionRowBuilder().addComponents(select);
+}
+
+function buildSelectMenuSupprimer(userId) {
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`select_supprimer_${userId}`)
+    .setPlaceholder('Fais un choix...')
+    .addOptions([
+      { label: 'Objet', description: "Supprimer un objet de l'inventaire", value: `supprimer_objet_${userId}`, emoji: '🎒' },
+      { label: 'Golem', description: 'Supprimer un golem', value: `supprimer_golem_${userId}`, emoji: '🪨' },
+      { label: "Objet d'une propriété", description: 'Supprimer un objet dans une propriété', value: `supprimer_objet_prop_${userId}`, emoji: '📦' },
+      { label: 'Propriété', description: 'Supprimer une propriété', value: `supprimer_propriete_${userId}`, emoji: '🏡' },
+      { label: 'Argent', description: "Retirer de l'argent au personnage", value: `supprimer_argent_${userId}`, emoji: '💰' },
+    ]);
+  return new ActionRowBuilder().addComponents(select);
 }
 
 function buildNavigationButtons(currentIndex, total, currentUserId) {
@@ -177,22 +160,13 @@ function createDefaultFiche(nom, age, taille, descriptif, competences) {
   const [intelligence, force, dexterite, chance] = competences.split(';').map(Number);
   return {
     nom, age, taille, descriptif,
-    competences: {
-      intelligence: intelligence || 0,
-      force: force || 0,
-      dexterite: dexterite || 0,
-      chance: chance || 0,
-    },
-    vie: 5,
-    vieMax: 5,
-    argent: 0,
-    revenu: 0,
-    proprietes: [],
-    golems: [],
-    inventaire: [],
-    champsCustom: [],
+    competences: { intelligence: intelligence || 0, force: force || 0, dexterite: dexterite || 0, chance: chance || 0 },
+    vie: 5, vieMax: 5, argent: 0, revenu: 0,
+    proprietes: [], golems: [], inventaire: [], champsCustom: [],
     createdAt: new Date().toISOString(),
   };
 }
 
-module.exports = { buildFicheEmbed, buildFicheButtons, buildNavigationButtons, createDefaultFiche };
+module.exports = { buildFicheEmbed, buildFicheButtons, buildSelectMenuAjouter, buildSelectMenuSupprimer, buildNavigationButtons, createDefaultFiche };
+EOF
+echo "ficheBuilder OK"

@@ -1,9 +1,15 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 
-// ─── Formate une liste d'items — un par ligne, numérotés correctement ──────────
+// ─── Formate une liste d'items — 2 par ligne, numérotés correctement ──────────
 function formatItemList(items, formatter) {
   if (!items || items.length === 0) return '*(vide)*';
-  return items.map((item, i) => formatter(item, i)).join('\n');
+  const lines = [];
+  for (let i = 0; i < items.length; i += 2) {
+    const left  = formatter(items[i],     i);
+    const right = (i + 1 < items.length) ? '  |  ' + formatter(items[i + 1], i + 1) : '';
+    lines.push(left + right);
+  }
+  return lines.join('\n');
 }
 
 // Formateur objet perso/golem : { nom, quantite?, niveau? }
@@ -133,34 +139,59 @@ function buildFicheButtons(userId) {
     new ButtonBuilder().setCustomId(`btn_revenu_${userId}`).setLabel('🪙 Revenu / jour').setStyle(ButtonStyle.Success),
   );
 
+  // Row 3 : Golem et Propriété — un seul bouton chacun, le menu déroulant choisira l'action
   const row3 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`btn_add_golem_${userId}`).setLabel('🪨 Ajouter golem').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`btn_del_golem_${userId}`).setLabel('🪨 Supprimer golem').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`btn_add_prop_${userId}`).setLabel('🏡 Ajouter propriété').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`btn_del_prop_${userId}`).setLabel('🏡 Supprimer propriété').setStyle(ButtonStyle.Danger),
-  );
-
-  const row4 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`btn_golem_${userId}`).setLabel('🪨 Golem').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`btn_prop_${userId}`).setLabel('🏡 Propriété').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`btn_hp_plus_${userId}`).setLabel('❤️ HP +').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`btn_hp_minus_${userId}`).setLabel('💔 HP -').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`btn_refresh_${userId}`).setLabel('🔄 Refresh').setStyle(ButtonStyle.Secondary),
   );
 
-  return [row1, row2, row3, row4];
+  return [row1, row2, row3];
 }
 
+// ─── Select menu action Golem ─────────────────────────────────────────────────
+function buildGolemActionMenu(userId) {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`select_golem_action_${userId}`)
+      .setPlaceholder('Choisir une action pour les Golems')
+      .addOptions([
+        { label: '🪨 Ajouter un Golem',    value: 'add',    description: 'Créer un nouveau golem' },
+        { label: '🗑️ Supprimer un Golem',  value: 'del',    description: 'Supprimer un golem existant' },
+      ])
+  );
+}
+
+// ─── Select menu action Propriété ────────────────────────────────────────────
+function buildPropActionMenu(userId) {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`select_prop_action_${userId}`)
+      .setPlaceholder('Choisir une action pour les Propriétés')
+      .addOptions([
+        { label: '🏡 Ajouter une Propriété',   value: 'add', description: 'Créer une nouvelle propriété' },
+        { label: '🗑️ Supprimer une Propriété', value: 'del', description: 'Supprimer une propriété existante' },
+      ])
+  );
+}
+
+// ─── Navigation (circulaire, jamais disabled) ─────────────────────────────────
 function buildNavigationButtons(currentIndex, total, currentUserId) {
+  // Navigation toujours active (circulaire) — on désactive seulement s'il y a 1 seule fiche
+  const onlyOne = total <= 1;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`nav_prev_${currentIndex}_${currentUserId}`)
       .setLabel('◀ Précédente')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(currentIndex === 0),
+      .setDisabled(onlyOne),
     new ButtonBuilder()
       .setCustomId(`nav_next_${currentIndex}_${currentUserId}`)
       .setLabel('Suivante ▶')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(currentIndex === total - 1),
+      .setDisabled(onlyOne),
   );
 }
 
@@ -186,7 +217,6 @@ function createDefaultFiche(nom, age, taille, descriptif, competences) {
 }
 
 // ─── Résolution inventaire ─────────────────────────────────────────────────────
-// Retourne la liste des noms d'inventaires avec leur casse originale
 function getInventoryList(fiche) {
   const list = ['perso'];
   for (const g of fiche.golems || []) list.push(typeof g === 'string' ? g : g.nom);
@@ -339,6 +369,8 @@ function removeFromInventoryByIndex(arr, index, quantite, type) {
 module.exports = {
   buildFicheEmbed,
   buildFicheButtons,
+  buildGolemActionMenu,
+  buildPropActionMenu,
   buildNavigationButtons,
   createDefaultFiche,
   getInventoryList,

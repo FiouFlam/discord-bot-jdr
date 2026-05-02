@@ -273,13 +273,16 @@ module.exports = {
           .setTitle('🔁 Transférer objet(s)');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('source').setLabel('Source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
+            new TextInputBuilder().setCustomId('cible_joueur').setLabel('Joueur cible (vide = même joueur)').setStyle(TextInputStyle.Short).setPlaceholder('Pseudo ou ID Discord').setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('destination').setLabel('Destination (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
+            new TextInputBuilder().setCustomId('source').setLabel('Inventaire source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
             new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('destination').setLabel('Inventaire destination (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder('perso, g1, p1...').setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
             new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (par objet)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)

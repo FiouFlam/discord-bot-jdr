@@ -1,4 +1,3 @@
-// src/utils/ficheBuilder.js
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 
 // ==================== FORMATAGE LISTE (FIX NUMÉROTATION) ====================

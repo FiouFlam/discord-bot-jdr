@@ -1,4 +1,4 @@
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getFiche, setFiche, getAllFiches } = require('../utils/database');
 const { buildFicheEmbed, buildFicheButtons, buildNavigationButtons } = require('../utils/ficheBuilder');
 
@@ -53,9 +53,70 @@ module.exports = {
         return updateMessage(interaction, userId, true);
       }
 
-      // Pour tous les boutons qui ouvrent un modal, on encode le messageId dans le customId du modal
-      // afin de pouvoir éditer le bon message lors de la soumission.
+      // ── Confirmation mort ──────────────────────────────────────────────────
+      if (id.startsWith('mort_oui_')) {
+        const userId = id.replace('mort_oui_', '');
+        // On peut ici marquer la fiche comme morte ou juste laisser la vie à 0
+        await interaction.update({
+          content: `☠️ **${userId}** est confirmé mort. La vie reste à 0.`,
+          components: [],
+        });
+        return;
+      }
+
+      if (id.startsWith('mort_non_')) {
+        const userId = id.replace('mort_non_', '');
+        await interaction.update({
+          content: `La vie de ce personnage est à 0, mais il n'est pas marqué comme mort.`,
+          components: [],
+        });
+        return;
+      }
+
+      // Pour tous les boutons qui ouvrent un modal, on encode le messageId dans le customId
       const messageId = interaction.message.id;
+
+      // ── Vie +1 / -1 ───────────────────────────────────────────────────────
+      if (id.startsWith('btn_vie_plus_')) {
+        const userId = id.replace('btn_vie_plus_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        const vieMax = fiche.vieMax ?? 5;
+        fiche.vie = Math.min((fiche.vie ?? 5) + 1, vieMax);
+        await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, true);
+      }
+
+      if (id.startsWith('btn_vie_moins_')) {
+        const userId = id.replace('btn_vie_moins_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        fiche.vie = Math.max((fiche.vie ?? 5) - 1, 0);
+        await setFiche(userId, fiche);
+
+        // Si vie tombe à 0 → demander si la personne est morte
+        if (fiche.vie === 0) {
+          await updateMessage(interaction, userId, true);
+          // Envoyer un message séparé éphémère avec les boutons de confirmation
+          const confirmRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`mort_oui_${userId}`)
+              .setLabel('⚰️ Oui, il est mort')
+              .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+              .setCustomId(`mort_non_${userId}`)
+              .setLabel('🔄 Non, pas encore')
+              .setStyle(ButtonStyle.Secondary),
+          );
+          return interaction.followUp({
+            content: `💀 **Attention !** Ce personnage est à **0 vie**. Est-il mort ?`,
+            components: [confirmRow],
+            ephemeral: false,
+          });
+        }
+
+        return;
+      }
 
       if (id.startsWith('argent_ajouter_') || id.startsWith('argent_retirer_')) {
         const action = id.startsWith('argent_ajouter_') ? 'ajouter' : 'retirer';
@@ -124,6 +185,16 @@ module.exports = {
           new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('champ_nom').setLabel('Nom du champ').setStyle(TextInputStyle.Short).setRequired(true)),
           new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('champ_valeur').setLabel('Contenu initial (optionnel)').setStyle(TextInputStyle.Paragraph).setRequired(false))
         );
+        return interaction.showModal(modal);
+      }
+
+      if (id.startsWith('btn_suppr_champ_')) {
+        const userId = id.replace('btn_suppr_champ_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche || (fiche.champsCustom || []).length === 0) return interaction.reply({ content: '❌ Aucun champ personnalisé !', ephemeral: true });
+        const liste = fiche.champsCustom.map((c, i) => `${i + 1}. ${c.nom}`).join('\n');
+        const modal = new ModalBuilder().setCustomId(`modal_suppr_champ_${userId}__${messageId}`).setTitle('Supprimer un champ personnalisé');
+        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('suppr_champ_num').setLabel('Numéro du champ à supprimer').setStyle(TextInputStyle.Short).setPlaceholder(liste.substring(0, 100)).setRequired(true)));
         return interaction.showModal(modal);
       }
 
@@ -269,6 +340,17 @@ module.exports = {
         return updateMessage(interaction, userId, false, messageId);
       }
 
+      if (baseId.startsWith('modal_suppr_champ_')) {
+        const userId = baseId.replace('modal_suppr_champ_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        const num = parseInt(interaction.fields.getTextInputValue('suppr_champ_num')) - 1;
+        if (isNaN(num) || num < 0 || num >= (fiche.champsCustom || []).length) return interaction.reply({ content: '❌ Numéro invalide !', ephemeral: true });
+        fiche.champsCustom.splice(num, 1);
+        await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, false, messageId);
+      }
+
       if (baseId.startsWith('modal_suppr_objet_propriete_')) {
         const userId = baseId.replace('modal_suppr_objet_propriete_', '');
         const fiche = await getFiche(userId);
@@ -329,7 +411,6 @@ async function updateMessage(interaction, userId, isButton = false, messageId = 
   const buttons = buildFicheButtons(userId);
 
   if (isButton) {
-    // Bouton direct : interaction.message est disponible, on utilise update()
     const msg = interaction.message;
     let components = [...buttons];
     if (msg && msg.components.length > buttons.length) {
@@ -339,11 +420,9 @@ async function updateMessage(interaction, userId, isButton = false, messageId = 
   }
 
   // Modal submit : interaction.message est null.
-  // On acquitte d'abord l'interaction, puis on édite le message original via le channel.
   await interaction.deferUpdate();
 
   if (!messageId || !interaction.channel) {
-    // Pas de messageId disponible : on ne peut qu'envoyer un message éphémère
     return interaction.followUp({ content: '✅ Mis à jour !', ephemeral: true });
   }
 

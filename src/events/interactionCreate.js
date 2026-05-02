@@ -242,6 +242,66 @@ module.exports = {
         );
         return interaction.showModal(modal);
       }
+
+      // 🪨 Ajouter golem
+      if (id.startsWith('btn_add_golem_')) {
+        const userId = id.replace('btn_add_golem_', '');
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_add_golem_${userId}__${messageId}`)
+          .setTitle('🪨 Ajouter un golem');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('nom').setLabel('Nom du golem').setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+        );
+        return interaction.showModal(modal);
+      }
+
+      // 🪨 Supprimer golem
+      if (id.startsWith('btn_del_golem_')) {
+        const userId = id.replace('btn_del_golem_', '');
+        const fiche = await getFiche(userId);
+        const golemList = (fiche?.golems || []).map((g, i) => `g${i+1}: ${typeof g === 'string' ? g : g.nom}`).join(', ') || 'aucun';
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_del_golem_${userId}__${messageId}`)
+          .setTitle('🪨 Supprimer un golem');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('numero').setLabel('Numéro du golem (g1, g2...)').setStyle(TextInputStyle.Short).setPlaceholder(golemList.substring(0, 100)).setRequired(true)
+          ),
+        );
+        return interaction.showModal(modal);
+      }
+
+      // 🏡 Ajouter propriété
+      if (id.startsWith('btn_add_prop_')) {
+        const userId = id.replace('btn_add_prop_', '');
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_add_prop_${userId}__${messageId}`)
+          .setTitle('🏡 Ajouter une propriété');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('nom').setLabel('Nom de la propriété').setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+        );
+        return interaction.showModal(modal);
+      }
+
+      // 🏡 Supprimer propriété
+      if (id.startsWith('btn_del_prop_')) {
+        const userId = id.replace('btn_del_prop_', '');
+        const fiche = await getFiche(userId);
+        const propList = (fiche?.proprietes || []).map((p, i) => `p${i+1}: ${typeof p === 'string' ? p : p.nom}`).join(', ') || 'aucune';
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_del_prop_${userId}__${messageId}`)
+          .setTitle('🏡 Supprimer une propriété');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('numero').setLabel('Numéro de la propriété (p1, p2...)').setStyle(TextInputStyle.Short).setPlaceholder(propList.substring(0, 100)).setRequired(true)
+          ),
+        );
+        return interaction.showModal(modal);
+      }
     }
 
     // ─── MODAL SUBMITS ─────────────────────────────────────────────────────────
@@ -379,6 +439,62 @@ module.exports = {
         const err = removeFromInventoryByIndex(inv.arr, objetNum - 1, quantite, inv.type);
         if (err) return interaction.reply({ content: err, ephemeral: true });
         fiche.argent = (fiche.argent ?? 0) + prix;
+        await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, false, messageId);
+      }
+
+      // 🪨 Ajouter golem
+      if (baseId.startsWith('modal_add_golem_')) {
+        const userId = baseId.replace('modal_add_golem_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        const nom = interaction.fields.getTextInputValue('nom').trim();
+        if (!nom) return interaction.reply({ content: '❌ Nom invalide.', ephemeral: true });
+        if (!Array.isArray(fiche.golems)) fiche.golems = [];
+        fiche.golems.push({ nom, inventaire: [] });
+        await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, false, messageId);
+      }
+
+      // 🪨 Supprimer golem
+      if (baseId.startsWith('modal_del_golem_')) {
+        const userId = baseId.replace('modal_del_golem_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        const input = interaction.fields.getTextInputValue('numero').trim().toLowerCase();
+        const match = input.match(/^g(\d+)$/);
+        if (!match) return interaction.reply({ content: '❌ Format invalide. Utilise g1, g2, etc.', ephemeral: true });
+        const idx = parseInt(match[1]) - 1;
+        if (idx < 0 || idx >= (fiche.golems || []).length) return interaction.reply({ content: `❌ Numéro invalide. Il y a ${(fiche.golems || []).length} golem(s).`, ephemeral: true });
+        fiche.golems.splice(idx, 1);
+        await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, false, messageId);
+      }
+
+      // 🏡 Ajouter propriété
+      if (baseId.startsWith('modal_add_prop_')) {
+        const userId = baseId.replace('modal_add_prop_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        const nom = interaction.fields.getTextInputValue('nom').trim();
+        if (!nom) return interaction.reply({ content: '❌ Nom invalide.', ephemeral: true });
+        if (!Array.isArray(fiche.proprietes)) fiche.proprietes = [];
+        fiche.proprietes.push({ nom, objets: [] });
+        await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, false, messageId);
+      }
+
+      // 🏡 Supprimer propriété
+      if (baseId.startsWith('modal_del_prop_')) {
+        const userId = baseId.replace('modal_del_prop_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        const input = interaction.fields.getTextInputValue('numero').trim().toLowerCase();
+        const match = input.match(/^p(\d+)$/);
+        if (!match) return interaction.reply({ content: '❌ Format invalide. Utilise p1, p2, etc.', ephemeral: true });
+        const idx = parseInt(match[1]) - 1;
+        if (idx < 0 || idx >= (fiche.proprietes || []).length) return interaction.reply({ content: `❌ Numéro invalide. Il y a ${(fiche.proprietes || []).length} propriété(s).`, ephemeral: true });
+        fiche.proprietes.splice(idx, 1);
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }

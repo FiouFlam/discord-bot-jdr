@@ -127,7 +127,7 @@ function buildFicheEmbed(fiche, targetUser) {
 // ─── Boutons ───────────────────────────────────────────────────────────────────
 function buildFicheButtons(userId) {
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`btn_ajouter_${userId}`).setLabel('➕ Ajouter objet').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`btn_ajouter_${userId}`).setLabel('➕ Ajouter objet').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`btn_supprimer_${userId}`).setLabel('➖ Supprimer objet').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`btn_transferer_${userId}`).setLabel('🔁 Transférer objet').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`btn_vendre_${userId}`).setLabel('💰 Vendre').setStyle(ButtonStyle.Success),
@@ -174,6 +174,19 @@ function buildPropActionMenu(userId) {
       .addOptions([
         { label: '🏡 Ajouter une Propriété',   value: 'add', description: 'Créer une nouvelle propriété' },
         { label: '🗑️ Supprimer une Propriété', value: 'del', description: 'Supprimer une propriété existante' },
+      ])
+  );
+}
+
+// ─── Select menu action Transfert ────────────────────────────────────────────
+function buildTransferActionMenu(userId) {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`select_transfer_action_${userId}`)
+      .setPlaceholder('Choisir le type de transfert')
+      .addOptions([
+        { label: '🔁 Transfert inventaire', value: 'inventaire', description: 'Transférer entre les inventaires du joueur' },
+        { label: '👤 Transfert joueur', value: 'joueur', description: 'Transférer un objet vers un autre joueur' },
       ])
   );
 }
@@ -368,6 +381,7 @@ module.exports = {
   buildFicheButtons,
   buildGolemActionMenu,
   buildPropActionMenu,
+  buildTransferActionMenu,
   buildNavigationButtons,
   createDefaultFiche,
   getInventoryList,

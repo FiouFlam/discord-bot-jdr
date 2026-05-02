@@ -5,6 +5,7 @@ const {
   buildFicheButtons,
   buildGolemActionMenu,
   buildPropActionMenu,
+  buildTransferActionMenu,
   buildNavigationButtons,
   getInventoryList,
   getInventoryListLabels,
@@ -117,6 +118,60 @@ module.exports = {
           modal.addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder().setCustomId('numero').setLabel('Numéro de la propriété (p1, p2...)').setStyle(TextInputStyle.Short).setPlaceholder(propList.substring(0, 100)).setRequired(true)
+            ),
+          );
+          return interaction.showModal(modal);
+        }
+      }
+      // Transfert action
+      if (id.startsWith('select_transfer_action_')) {
+        const userId = id.replace('select_transfer_action_', '');
+        const action = interaction.values[0];
+        const fiche = await getFiche(userId);
+        const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
+
+        if (action === 'inventaire') {
+          // Transfert entre inventaires du même joueur
+          const modal = new ModalBuilder()
+            .setCustomId(`modal_transferer_inv_${userId}__${messageId}`)
+            .setTitle('🔁 Transfert inventaire');
+          modal.addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder().setCustomId('source').setLabel('Inventaire source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder().setCustomId('destination').setLabel('Inventaire destination (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder('perso, g1, p1...').setRequired(false)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (par objet)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+            ),
+          );
+          return interaction.showModal(modal);
+        } else if (action === 'joueur') {
+          // Transfert vers un autre joueur
+          const modal = new ModalBuilder()
+            .setCustomId(`modal_transferer_joueur_${userId}__${messageId}`)
+            .setTitle('👤 Transfert joueur');
+          modal.addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('cible_joueur')
+                .setLabel('Joueur destinataire')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('Pseudo ou ID Discord')
+                .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder().setCustomId('source').setLabel('Inventaire source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (par objet)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
             ),
           );
           return interaction.showModal(modal);
@@ -263,32 +318,19 @@ module.exports = {
         return interaction.showModal(modal);
       }
 
-      // 🔁 Transférer objet (entre inventaires du même joueur)
+      // 🔁 Transférer objet → affiche le select menu de type de transfert
       if (id.startsWith('btn_transferer_')) {
         const userId = id.replace('btn_transferer_', '');
         const fiche = await getFiche(userId);
-        const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
-        const modal = new ModalBuilder()
-          .setCustomId(`modal_transferer_${userId}__${messageId}`)
-          .setTitle('🔁 Transférer objet(s)');
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('cible_joueur').setLabel('Joueur cible (vide = même joueur)').setStyle(TextInputStyle.Short).setPlaceholder('Pseudo ou ID Discord').setRequired(false)
-          ),
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('source').setLabel('Inventaire source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
-          ),
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setRequired(true)
-          ),
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('destination').setLabel('Inventaire destination (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder('perso, g1, p1...').setRequired(false)
-          ),
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (par objet)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
-          ),
-        );
-        return interaction.showModal(modal);
+        const embed = buildFicheEmbed(fiche, await interaction.client.users.fetch(userId).catch(() => ({ username: 'Joueur inconnu', displayAvatarURL: () => null })));
+        const ficheButtons = buildFicheButtons(userId);
+        const transferMenu = buildTransferActionMenu(userId);
+        const msg = interaction.message;
+        let components = [...ficheButtons, transferMenu];
+        if (msg && msg.components.length > ficheButtons.length + 1) {
+          components.push(msg.components[msg.components.length - 1]);
+        }
+        return interaction.update({ embeds: [embed], components });
       }
 
       // 💳 Transférer argent — FIX: accepte pseudo OU ID
@@ -524,9 +566,9 @@ module.exports = {
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      // 🔁 Transférer objet — FIX: supporte plusieurs numéros séparés par ";"
-      if (baseId.startsWith('modal_transferer_')) {
-        const userId = baseId.replace('modal_transferer_', '');
+      // 🔁 Transférer inventaire (entre inventaires du même joueur)
+      if (baseId.startsWith('modal_transferer_inv_')) {
+        const userId = baseId.replace('modal_transferer_inv_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const srcName  = interaction.fields.getTextInputValue('source').trim() || 'perso';
@@ -539,11 +581,9 @@ module.exports = {
         const dst = resolveInventoryByLabel(fiche, dstName);
         if (!dst) return interaction.reply({ content: `❌ Destination "${dstName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
 
-        // Parse les numéros
         const nums = objetNumRaw.split(/[;,]/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
         if (nums.length === 0) return interaction.reply({ content: '❌ Numéro(s) invalide(s).', ephemeral: true });
 
-        // Collecter les objets à transférer d'abord (avant suppression)
         const toTransfer = [];
         const errors = [];
         for (const num of nums) {
@@ -554,7 +594,6 @@ module.exports = {
         }
         if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs : ${errors.join(', ')}`, ephemeral: true });
 
-        // Supprimer en décroissant
         toTransfer.sort((a, b) => b.num - a.num);
         for (const { num, nom } of toTransfer) {
           const err = removeFromInventoryByIndex(src.arr, num - 1, quantite, src.type);
@@ -563,6 +602,55 @@ module.exports = {
         }
         if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs partielles : ${errors.join(', ')}`, ephemeral: true });
         await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, false, messageId);
+      }
+
+      // 👤 Transférer joueur (vers l'inventaire perso d'un autre joueur)
+      if (baseId.startsWith('modal_transferer_joueur_')) {
+        const userId = baseId.replace('modal_transferer_joueur_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        const cibleInput = interaction.fields.getTextInputValue('cible_joueur').trim();
+        const srcName  = interaction.fields.getTextInputValue('source').trim() || 'perso';
+        const objetNumRaw = interaction.fields.getTextInputValue('objet_numero').trim();
+        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+
+        // Résoudre le joueur cible
+        let cibleId = cibleInput;
+        if (!/^\d+$/.test(cibleInput)) {
+          cibleId = await findPlayerIdByName(interaction.client, cibleInput);
+          if (!cibleId) return interaction.reply({ content: `❌ Joueur "${cibleInput}" introuvable. Essaie avec son ID Discord.`, ephemeral: true });
+        }
+        const ficheCible = await getFiche(cibleId);
+        if (!ficheCible) return interaction.reply({ content: `❌ Fiche du joueur "${cibleInput}" introuvable.`, ephemeral: true });
+
+        const src = resolveInventoryByLabel(fiche, srcName);
+        if (!src) return interaction.reply({ content: `❌ Source "${srcName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
+
+        const nums = objetNumRaw.split(/[;,]/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+        if (nums.length === 0) return interaction.reply({ content: '❌ Numéro(s) invalide(s).', ephemeral: true });
+
+        const toTransfer = [];
+        const errors = [];
+        for (const num of nums) {
+          if (num < 1 || num > src.arr.length) { errors.push(`Numéro ${num} invalide`); continue; }
+          const obj = src.arr[num - 1];
+          const nom = (typeof obj === 'string') ? obj : (obj.nom || '???');
+          toTransfer.push({ num, nom });
+        }
+        if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs : ${errors.join(', ')}`, ephemeral: true });
+
+        toTransfer.sort((a, b) => b.num - a.num);
+        for (const { num, nom } of toTransfer) {
+          const err = removeFromInventoryByIndex(src.arr, num - 1, quantite, src.type);
+          if (err) { errors.push(err); continue; }
+          // Ajouter dans l'inventaire perso du joueur cible
+          if (!Array.isArray(ficheCible.inventaire)) ficheCible.inventaire = [];
+          addToInventory(ficheCible.inventaire, nom, quantite, 'perso');
+        }
+        if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs partielles : ${errors.join(', ')}`, ephemeral: true });
+        await setFiche(userId, fiche);
+        await setFiche(cibleId, ficheCible);
         return updateMessage(interaction, userId, false, messageId);
       }
 

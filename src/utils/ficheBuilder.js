@@ -38,31 +38,25 @@ function buildFicheEmbed(fiche, targetUser) {
     embed.setThumbnail(targetUser.displayAvatarURL());
   }
 
-  // Inventaire objets (3 par ligne)
+  // Inventaire objets — FIX: numérotation correcte, pas de bug de retour à la ligne
   const inventaire = (fiche.inventaire || []).length > 0
-    ? groupByLine(fiche.inventaire.map((obj, i) => {
-        const niv = obj.niveau != null ? `(niv.${obj.niveau})` : '';
-        return `${i + 1}. ${obj.nom}${niv}`;
-      }), 3)
+    ? formatInventaire(fiche.inventaire)
     : '*(vide)*';
   embed.addFields({ name: '🎒 Inventaire', value: inventaire, inline: false });
 
-  // Inventaire golems (3 par ligne)
+  // Inventaire golems
   const inventaireGolems = (fiche.inventaireGolems || []).length > 0
-    ? groupByLine(fiche.inventaireGolems.map((obj, i) => {
-        const niv = obj.niveau != null ? `(niv.${obj.niveau})` : '';
-        return `${i + 1}. ${obj.nom}${niv}`;
-      }), 3)
+    ? formatInventaire(fiche.inventaireGolems)
     : '*(vide)*';
   embed.addFields({ name: '🪨 Inventaire des Golems', value: inventaireGolems, inline: false });
 
-  // Propriétés avec leurs objets (3 par ligne)
+  // Propriétés avec leurs objets
   if ((fiche.proprietes || []).length > 0) {
     for (let i = 0; i < fiche.proprietes.length; i++) {
       const p = fiche.proprietes[i];
       const nom = typeof p === 'string' ? p : p.nom;
       const objets = (p.objets || []).length > 0
-        ? groupByLine(p.objets.map((o, j) => `${j + 1}. ${o}`), 3)
+        ? formatObjetsSimples(p.objets)
         : '*(vide)*';
       embed.addFields({ name: `🏡 ${i + 1}. ${nom}`, value: objets, inline: false });
     }
@@ -70,9 +64,9 @@ function buildFicheEmbed(fiche, targetUser) {
     embed.addFields({ name: '🏡 Propriétés', value: '*(vide)*', inline: false });
   }
 
-  // Golems (3 par ligne)
+  // Golems
   const golems = (fiche.golems || []).length > 0
-    ? groupByLine(fiche.golems.map((g, i) => `${i + 1}. ${g}`), 3)
+    ? formatObjetsSimples(fiche.golems)
     : '*(vide)*';
   embed.addFields({ name: '🪨 Liste des golems', value: golems, inline: false });
 
@@ -84,8 +78,32 @@ function buildFicheEmbed(fiche, targetUser) {
   return embed;
 }
 
+// FIX: Format inventaire avec objets (nom + niveau optionnel), 3 par ligne
+// Utilise un séparateur court pour éviter les problèmes d'affichage Discord
+function formatInventaire(items) {
+  const formatted = items.map((obj, i) => {
+    const niv = obj.niveau != null ? ` (niv.${obj.niveau})` : '';
+    return `**${i + 1}.** ${obj.nom}${niv}`;
+  });
+  return groupByLine(formatted, 3);
+}
+
+// FIX: Format objets simples (strings), 3 par ligne
+function formatObjetsSimples(items) {
+  const formatted = items.map((item, i) => `**${i + 1}.** ${item}`);
+  return groupByLine(formatted, 3);
+}
+
+// FIX: groupByLine utilise un séparateur propre, sans espaces superflus
+function groupByLine(items, perLine) {
+  const lines = [];
+  for (let i = 0; i < items.length; i += perLine) {
+    lines.push(items.slice(i, i + perLine).join(' | '));
+  }
+  return lines.join('\n');
+}
+
 function buildFicheButtons(userId) {
-  // Ligne 1 : Bouton "Ajouter" (select menu) | Bouton "Supprimer" (select menu)
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`btn_menu_ajouter_${userId}`)
@@ -101,7 +119,6 @@ function buildFicheButtons(userId) {
       .setStyle(ButtonStyle.Secondary),
   );
 
-  // Ligne 2 : ➕ Ajouter argent | ➖ Retirer argent | Revenu / jour
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`argent_ajouter_${userId}`)
@@ -117,7 +134,6 @@ function buildFicheButtons(userId) {
       .setStyle(ButtonStyle.Success),
   );
 
-  // Ligne 3 : +1 Vie | -1 Vie
   const row3 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`btn_vie_plus_${userId}`)
@@ -158,7 +174,7 @@ function buildSelectMenuSupprimer(userId) {
       .addOptions([
         { label: 'Objet (inventaire)', value: 'objet', emoji: '🎒' },
         { label: 'Objet golem (inventaire golem)', value: 'objet_golem', emoji: '🪨' },
-        { label: 'Objet d\'une propriété', value: 'objet_propriete', emoji: '📦' },
+        { label: "Objet d'une propriété", value: 'objet_propriete', emoji: '📦' },
         { label: 'Propriété', value: 'propriete', emoji: '🏡' },
         { label: 'Golem', value: 'golem', emoji: '🗿' },
         { label: 'Champ personnalisé', value: 'champ', emoji: '📝' },
@@ -168,7 +184,6 @@ function buildSelectMenuSupprimer(userId) {
 }
 
 function buildNavigationButtons(currentIndex, total, currentUserId) {
-  // Navigation circulaire : les flèches sont toujours actives si total > 1
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`nav_prev_${currentIndex}_${currentUserId}`)
@@ -204,14 +219,6 @@ function createDefaultFiche(nom, age, taille, descriptif, competences) {
     champsCustom: [],
     createdAt: new Date().toISOString(),
   };
-}
-
-function groupByLine(items, perLine) {
-  const lines = [];
-  for (let i = 0; i < items.length; i += perLine) {
-    lines.push(items.slice(i, i + perLine).join('  |  '));
-  }
-  return lines.join('\n');
 }
 
 module.exports = {

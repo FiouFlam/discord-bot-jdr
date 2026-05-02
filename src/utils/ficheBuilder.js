@@ -120,9 +120,9 @@ function buildFicheEmbed(fiche, targetUser) {
 // ─── Boutons ───────────────────────────────────────────────────────────────────
 function buildFicheButtons(userId) {
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`btn_ajouter_${userId}`).setLabel('➕ Ajouter').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`btn_supprimer_${userId}`).setLabel('➖ Supprimer').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`btn_transferer_${userId}`).setLabel('🔁 Transférer').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`btn_ajouter_${userId}`).setLabel('➕ Ajouter objet').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`btn_supprimer_${userId}`).setLabel('➖ Supprimer objet').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`btn_transferer_${userId}`).setLabel('🔁 Transférer objet').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`btn_vendre_${userId}`).setLabel('💰 Vendre').setStyle(ButtonStyle.Success),
   );
 
@@ -134,12 +134,19 @@ function buildFicheButtons(userId) {
   );
 
   const row3 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`btn_add_golem_${userId}`).setLabel('🪨 Ajouter golem').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`btn_del_golem_${userId}`).setLabel('🪨 Supprimer golem').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`btn_add_prop_${userId}`).setLabel('🏡 Ajouter propriété').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`btn_del_prop_${userId}`).setLabel('🏡 Supprimer propriété').setStyle(ButtonStyle.Danger),
+  );
+
+  const row4 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`btn_hp_plus_${userId}`).setLabel('❤️ HP +').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`btn_hp_minus_${userId}`).setLabel('💔 HP -').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`btn_refresh_${userId}`).setLabel('🔄 Refresh').setStyle(ButtonStyle.Secondary),
   );
 
-  return [row1, row2, row3];
+  return [row1, row2, row3, row4];
 }
 
 function buildNavigationButtons(currentIndex, total, currentUserId) {

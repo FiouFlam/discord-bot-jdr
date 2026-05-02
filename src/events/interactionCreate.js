@@ -214,22 +214,45 @@ module.exports = {
         const messageId = interaction.message.id;
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+
+        // Build source hints
         const invStr = (fiche.inventaire || []).length > 0
-          ? fiche.inventaire.map((o, i) => `${i + 1}. ${o.nom}`).join('\n')
+          ? fiche.inventaire.map((o, i) => `${i + 1}.${o.nom}`).join(', ')
           : '(vide)';
         const invGolemStr = (fiche.inventaireGolems || []).length > 0
-          ? fiche.inventaireGolems.map((o, i) => `${i + 1}. ${o.nom}`).join('\n')
+          ? fiche.inventaireGolems.map((o, i) => `${i + 1}.${o.nom}`).join(', ')
           : '(vide)';
-        const modal = new ModalBuilder().setCustomId(`modal_transferer_${userId}__${messageId}`).setTitle('Transférer un objet');
+
+        // Build proprietes hint
+        const propList = (fiche.proprietes || []).length > 0
+          ? fiche.proprietes.map((p, i) => { const nom = typeof p === 'string' ? p : p.nom; return `prop${i + 1}=${nom}`; }).join(', ')
+          : '(aucune)';
+
+        const modal = new ModalBuilder().setCustomId(`modal_transferer_${userId}__${messageId}`).setTitle('Transférer un ou plusieurs objets');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('transferer_source').setLabel('Source : "inv" ou "golem"').setStyle(TextInputStyle.Short).setPlaceholder('inv').setRequired(true)
+            new TextInputBuilder()
+              .setCustomId('transferer_source')
+              .setLabel('Source : "inv", "golem" ou "prop1", "prop2"...')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder('inv')
+              .setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('transferer_num').setLabel('Numéro de l\'objet à transférer').setStyle(TextInputStyle.Short).setPlaceholder(`Inv: ${invStr.substring(0, 40)}`).setRequired(true)
+            new TextInputBuilder()
+              .setCustomId('transferer_num')
+              .setLabel('N° objet(s) — ex: 1 ou 1;3;5 pour plusieurs')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder(`Inv: ${invStr.substring(0, 50)}`)
+              .setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('transferer_dest').setLabel('Destination : "inv" ou "golem"').setStyle(TextInputStyle.Short).setPlaceholder('golem').setRequired(true)
+            new TextInputBuilder()
+              .setCustomId('transferer_dest')
+              .setLabel('Dest : "inv", "golem" ou "prop1", "prop2"...')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder(`golem | ${propList.substring(0, 40)}`)
+              .setRequired(true)
           )
         );
         return interaction.showModal(modal);
@@ -488,7 +511,7 @@ module.exports = {
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      // Transfert entre inventaires
+      // Transfert entre inventaires (supporte multi-items et propriétés)
       if (baseId.startsWith('modal_transferer_')) {
         const userId = baseId.replace('modal_transferer_', '');
         const fiche = await getFiche(userId);
@@ -497,25 +520,79 @@ module.exports = {
         const source = interaction.fields.getTextInputValue('transferer_source').trim().toLowerCase();
         const dest = interaction.fields.getTextInputValue('transferer_dest').trim().toLowerCase();
         const numRaw = interaction.fields.getTextInputValue('transferer_num').trim();
-        const num = parseInt(numRaw) - 1;
 
-        if (!['inv', 'golem'].includes(source)) return interaction.reply({ content: '❌ Source invalide ! Utilisez "inv" ou "golem".', ephemeral: true });
-        if (!['inv', 'golem'].includes(dest)) return interaction.reply({ content: '❌ Destination invalide ! Utilisez "inv" ou "golem".', ephemeral: true });
+        // Résoudre la source (inv, golem, prop1, prop2...)
+        function resolveArray(key) {
+          if (key === 'inv') return { array: fiche.inventaire || [], type: 'inv' };
+          if (key === 'golem') return { array: fiche.inventaireGolems || [], type: 'golem' };
+          const propMatch = key.match(/^prop(\d+)$/);
+          if (propMatch) {
+            const propIdx = parseInt(propMatch[1]) - 1;
+            if (isNaN(propIdx) || propIdx < 0 || propIdx >= (fiche.proprietes || []).length) return null;
+            const prop = fiche.proprietes[propIdx];
+            if (typeof prop === 'string') {
+              fiche.proprietes[propIdx] = { nom: prop, objets: [] };
+            }
+            if (!fiche.proprietes[propIdx].objets) fiche.proprietes[propIdx].objets = [];
+            return { array: fiche.proprietes[propIdx].objets, type: 'prop', propIdx };
+          }
+          return null;
+        }
+
+        function setArray(type, propIdx, newArray) {
+          if (type === 'inv') fiche.inventaire = newArray;
+          else if (type === 'golem') fiche.inventaireGolems = newArray;
+          else if (type === 'prop') fiche.proprietes[propIdx].objets = newArray;
+        }
+
+        const srcResolved = resolveArray(source);
+        if (!srcResolved) return interaction.reply({ content: '❌ Source invalide ! Utilisez "inv", "golem" ou "prop1", "prop2"...', ephemeral: true });
+
+        const destResolved = resolveArray(dest);
+        if (!destResolved) return interaction.reply({ content: '❌ Destination invalide ! Utilisez "inv", "golem" ou "prop1", "prop2"...', ephemeral: true });
+
         if (source === dest) return interaction.reply({ content: '❌ La source et la destination doivent être différentes !', ephemeral: true });
 
-        const srcArray = source === 'inv' ? (fiche.inventaire || []) : (fiche.inventaireGolems || []);
-        if (isNaN(num) || num < 0 || num >= srcArray.length) return interaction.reply({ content: '❌ Numéro invalide !', ephemeral: true });
+        // Parser les numéros (supporte "1" ou "1;3;5")
+        const numParts = numRaw.split(';').map(s => parseInt(s.trim()) - 1);
+        if (numParts.some(n => isNaN(n))) return interaction.reply({ content: '❌ Format invalide ! Entrez un numéro ou plusieurs séparés par ";" (ex: 1;3;5).', ephemeral: true });
 
-        const objet = srcArray.splice(num, 1)[0];
-        if (source === 'inv') {
-          fiche.inventaire = srcArray;
-          if (!fiche.inventaireGolems) fiche.inventaireGolems = [];
-          fiche.inventaireGolems.push(objet);
-        } else {
-          fiche.inventaireGolems = srcArray;
-          if (!fiche.inventaire) fiche.inventaire = [];
-          fiche.inventaire.push(objet);
+        const srcArray = [...srcResolved.array];
+        const destArray = [...destResolved.array];
+
+        // Trier en ordre décroissant pour supprimer sans décaler les index
+        const sortedNums = [...new Set(numParts)].sort((a, b) => b - a);
+
+        for (const num of sortedNums) {
+          if (num < 0 || num >= srcArray.length) {
+            return interaction.reply({ content: `❌ Numéro ${num + 1} invalide (l'inventaire source a ${srcArray.length} objet(s)).`, ephemeral: true });
+          }
         }
+
+        // Extraire les objets dans l'ordre original (croissant)
+        const toTransfer = sortedNums.sort((a, b) => a - b).map(n => srcArray[n]);
+
+        // Supprimer en ordre décroissant
+        for (const num of sortedNums.sort((a, b) => b - a)) {
+          srcArray.splice(num, 1);
+        }
+
+        // Ajouter à la destination
+        // Pour les propriétés, les objets sont des strings ; pour inv/golem, ce sont des {nom, niveau}
+        for (const obj of toTransfer) {
+          if (destResolved.type === 'prop') {
+            // Convertir objet en string pour les propriétés
+            const nomStr = typeof obj === 'string' ? obj : (obj.niveau != null ? `${obj.nom} (niv.${obj.niveau})` : obj.nom);
+            destArray.push(nomStr);
+          } else {
+            // Convertir string en objet pour inv/golem
+            const objFmt = typeof obj === 'string' ? { nom: obj, niveau: null } : obj;
+            destArray.push(objFmt);
+          }
+        }
+
+        setArray(srcResolved.type, srcResolved.propIdx, srcArray);
+        setArray(destResolved.type, destResolved.propIdx, destArray);
 
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);

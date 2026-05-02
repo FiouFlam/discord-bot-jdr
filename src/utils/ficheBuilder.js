@@ -1,20 +1,14 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 
-// ─── Formate une liste d'items — 2 par ligne, numérotés correctement ──────────
+// ─── Formate une liste d'items — 1 par ligne, numérotés séquentiellement ──────
 function formatItemList(items, formatter) {
   if (!items || items.length === 0) return '*(vide)*';
-  const lines = [];
-  for (let i = 0; i < items.length; i += 2) {
-    // FIX: pass the correct absolute index to formatter so numbering is always sequential
-    const left  = formatter(items[i],     i);
-    const right = (i + 1 < items.length) ? '  |  ' + formatter(items[i + 1], i + 1) : '';
-    lines.push(left + right);
-  }
-  return lines.join('\n');
+  return items.map((item, i) => formatter(item, i)).join('\n');
 }
 
 // Formateur objet perso/golem : { nom, quantite?, niveau? }
 function fmtObj(obj, i) {
+  if (typeof obj === 'string') return `${i + 1}. ${obj}`;
   if (!obj || typeof obj !== 'object') return `${i + 1}. ???`;
   const nom = obj.nom || '???';
   const niv = obj.niveau != null ? ` niv.${obj.niveau}` : '';

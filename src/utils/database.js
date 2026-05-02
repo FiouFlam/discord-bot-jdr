@@ -1,63 +1,52 @@
-const fs = require('fs');
-const path = require('path');
+const { MongoClient } = require('mongodb');
 
-const DB_PATH = path.join(__dirname, '../../data/fiches.json');
-const ITEMS_PATH = path.join(__dirname, '../../data/items.json');
+const uri = process.env.MONGODB_URI;
+if (!uri) throw new Error('❌ MONGODB_URI manquant !');
 
-function ensureDir() {
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
+const client = new MongoClient(uri);
+let db = null;
 
-function loadFiches() {
-  ensureDir();
-  if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, '{}');
-  return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-}
-
-function saveFiches(data) {
-  ensureDir();
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-}
-
-function getFiche(userId) {
-  const fiches = loadFiches();
-  return fiches[userId] || null;
-}
-
-function setFiche(userId, fiche) {
-  const fiches = loadFiches();
-  fiches[userId] = fiche;
-  saveFiches(fiches);
-}
-
-function deleteFiche(userId) {
-  const fiches = loadFiches();
-  if (fiches[userId]) {
-    delete fiches[userId];
-    saveFiches(fiches);
-    return true;
+async function connect() {
+  if (!db) {
+    await client.connect().catch(err => { console.error('❌ Erreur MongoDB:', err); throw err; });
+    db = client.db('discord_bot');
+    console.log('✅ Connecté à MongoDB');
   }
-  return false;
+  return db;
 }
 
-function getAllFiches() {
-  return loadFiches();
+async function getFiche(userId) {
+  const database = await connect();
+  const doc = await database.collection('fiches').findOne({ userId });
+  if (!doc) return null;
+  const { _id, userId: _, ...fiche } = doc;
+  return fiche;
 }
 
-function loadItems() {
-  if (!fs.existsSync(ITEMS_PATH)) {
-    const defaultItems = [
-      { id: 'epee', name: '⚔️ Épée', description: 'Une épée basique' },
-      { id: 'bouclier', name: '🛡️ Bouclier', description: 'Un bouclier solide' },
-      { id: 'potion', name: '🧪 Potion de soin', description: 'Restaure de la vie' },
-      { id: 'arc', name: '🏹 Arc', description: 'Un arc en bois' },
-      { id: 'grimoire', name: '📖 Grimoire', description: 'Contient des sorts' },
-    ];
-    fs.writeFileSync(ITEMS_PATH, JSON.stringify(defaultItems, null, 2));
-    return defaultItems;
+async function setFiche(userId, fiche) {
+  const database = await connect();
+  await database.collection('fiches').updateOne(
+    { userId },
+    { $set: { userId, ...fiche } },
+    { upsert: true }
+  );
+}
+
+async function deleteFiche(userId) {
+  const database = await connect();
+  const result = await database.collection('fiches').deleteOne({ userId });
+  return result.deletedCount > 0;
+}
+
+async function getAllFiches() {
+  const database = await connect();
+  const docs = await database.collection('fiches').find({}).toArray();
+  const fiches = {};
+  for (const doc of docs) {
+    const { _id, userId, ...fiche } = doc;
+    fiches[userId] = fiche;
   }
-  return JSON.parse(fs.readFileSync(ITEMS_PATH, 'utf8'));
+  return fiches;
 }
 
-module.exports = { getFiche, setFiche, deleteFiche, getAllFiches, loadItems };
+module.exports = { getFiche, setFiche, deleteFiche, getAllFiches };

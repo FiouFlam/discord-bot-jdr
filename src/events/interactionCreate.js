@@ -1,3 +1,4 @@
+cat > /mnt/user-data/outputs/discord-bot-fixed/src/events/interactionCreate.js << 'ENDOFFILE'
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const { getFiche, setFiche, deleteFiche, getAllFiches } = require('../utils/database');
 const {
@@ -45,7 +46,8 @@ module.exports = {
           const modal = new ModalBuilder().setCustomId(`modal_objet_${userId}__${messageId}`).setTitle('Ajouter un objet (inventaire)');
           modal.addComponents(
             new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)),
-            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_niveau').setLabel('Niveau (optionnel)').setStyle(TextInputStyle.Short).setPlaceholder('ex: 1').setRequired(false))
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_niveau').setLabel('Niveau (optionnel)').setStyle(TextInputStyle.Short).setPlaceholder('ex: 1').setRequired(false)),
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_quantite').setLabel('Quantité (défaut: 1)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false))
           );
           return interaction.showModal(modal);
         }
@@ -54,7 +56,8 @@ module.exports = {
           const modal = new ModalBuilder().setCustomId(`modal_objet_golem_${userId}__${messageId}`).setTitle('Ajouter un objet (inventaire golem)');
           modal.addComponents(
             new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)),
-            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_niveau').setLabel('Niveau (optionnel)').setStyle(TextInputStyle.Short).setPlaceholder('ex: 1').setRequired(false))
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_niveau').setLabel('Niveau (optionnel)').setStyle(TextInputStyle.Short).setPlaceholder('ex: 1').setRequired(false)),
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('objet_quantite').setLabel('Quantité (défaut: 1)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false))
           );
           return interaction.showModal(modal);
         }
@@ -107,7 +110,7 @@ module.exports = {
 
         if (choice === 'objet') {
           if (!fiche.inventaire || fiche.inventaire.length === 0) return interaction.reply({ content: '❌ L\'inventaire est vide !', ephemeral: true });
-          const liste = fiche.inventaire.map((o, i) => `${i + 1}. ${o.nom}${o.niveau != null ? ` (niv.${o.niveau})` : ''}`).join('\n');
+          const liste = fiche.inventaire.map((o, i) => `${i + 1}. ${o.nom}${o.niveau != null ? ` (niv.${o.niveau})` : ''}${o.quantite > 1 ? ` ×${o.quantite}` : ''}`).join('\n');
           const modal = new ModalBuilder().setCustomId(`modal_suppr_objet_${userId}__${messageId}`).setTitle('Supprimer un objet');
           modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('suppr_objet_num').setLabel('Numéro de l\'objet à supprimer').setStyle(TextInputStyle.Short).setPlaceholder(liste.substring(0, 100)).setRequired(true)));
           return interaction.showModal(modal);
@@ -115,7 +118,7 @@ module.exports = {
 
         if (choice === 'objet_golem') {
           if (!fiche.inventaireGolems || fiche.inventaireGolems.length === 0) return interaction.reply({ content: '❌ L\'inventaire golem est vide !', ephemeral: true });
-          const liste = fiche.inventaireGolems.map((o, i) => `${i + 1}. ${o.nom}${o.niveau != null ? ` (niv.${o.niveau})` : ''}`).join('\n');
+          const liste = fiche.inventaireGolems.map((o, i) => `${i + 1}. ${o.nom}${o.niveau != null ? ` (niv.${o.niveau})` : ''}${o.quantite > 1 ? ` ×${o.quantite}` : ''}`).join('\n');
           const modal = new ModalBuilder().setCustomId(`modal_suppr_objet_golem_${userId}__${messageId}`).setTitle('Supprimer un objet (inventaire golem)');
           modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('suppr_objet_num').setLabel('Numéro de l\'objet à supprimer').setStyle(TextInputStyle.Short).setPlaceholder(liste.substring(0, 100)).setRequired(true)));
           return interaction.showModal(modal);
@@ -194,6 +197,12 @@ module.exports = {
         return interaction.update({ embeds: [embed], components: [...ficheButtons, navButtons] });
       }
 
+      // Refresh : recharge la fiche depuis la DB et met à jour le message
+      if (id.startsWith('btn_refresh_')) {
+        const userId = id.replace('btn_refresh_', '');
+        return updateMessage(interaction, userId, true);
+      }
+
       // Ouvrir le select menu "Ajouter"
       if (id.startsWith('btn_menu_ajouter_')) {
         const userId = id.replace('btn_menu_ajouter_', '');
@@ -208,22 +217,16 @@ module.exports = {
         return interaction.reply({ content: '🗑️ Que voulez-vous supprimer ?', components: [selectRow], ephemeral: true });
       }
 
-      // Transférer entre inventaires
-      if (id.startsWith('btn_transferer_')) {
+      // Transférer entre inventaires du même joueur
+      if (id.startsWith('btn_transferer_') && !id.startsWith('btn_transferer_joueur_')) {
         const userId = id.replace('btn_transferer_', '');
         const messageId = interaction.message.id;
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
 
-        // Build source hints
         const invStr = (fiche.inventaire || []).length > 0
-          ? fiche.inventaire.map((o, i) => `${i + 1}.${o.nom}`).join(', ')
+          ? fiche.inventaire.map((o, i) => `${i + 1}.${o.nom}${o.quantite > 1 ? `×${o.quantite}` : ''}`).join(', ')
           : '(vide)';
-        const invGolemStr = (fiche.inventaireGolems || []).length > 0
-          ? fiche.inventaireGolems.map((o, i) => `${i + 1}.${o.nom}`).join(', ')
-          : '(vide)';
-
-        // Build proprietes hint
         const propList = (fiche.proprietes || []).length > 0
           ? fiche.proprietes.map((p, i) => { const nom = typeof p === 'string' ? p : p.nom; return `prop${i + 1}=${nom}`; }).join(', ')
           : '(aucune)';
@@ -231,28 +234,74 @@ module.exports = {
         const modal = new ModalBuilder().setCustomId(`modal_transferer_${userId}__${messageId}`).setTitle('Transférer un ou plusieurs objets');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('transferer_source')
-              .setLabel('Source : "inv", "golem" ou "prop1", "prop2"...')
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder('inv')
-              .setRequired(true)
+            new TextInputBuilder().setCustomId('transferer_source').setLabel('Source : "inv", "golem" ou "prop1"...').setStyle(TextInputStyle.Short).setPlaceholder('inv').setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('transferer_num')
-              .setLabel('N° objet(s) — ex: 1 ou 1;3;5 pour plusieurs')
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder(`Inv: ${invStr.substring(0, 50)}`)
-              .setRequired(true)
+            new TextInputBuilder().setCustomId('transferer_num').setLabel('N° objet(s) — ex: 1 ou 1;3;5 pour plusieurs').setStyle(TextInputStyle.Short).setPlaceholder(`Inv: ${invStr.substring(0, 50)}`).setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('transferer_dest')
-              .setLabel('Dest : "inv", "golem" ou "prop1", "prop2"...')
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder(`golem | ${propList.substring(0, 40)}`)
-              .setRequired(true)
+            new TextInputBuilder().setCustomId('transferer_qte').setLabel('Quantité à transférer (défaut: tout)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('transferer_dest').setLabel('Dest : "inv", "golem" ou "prop1"...').setStyle(TextInputStyle.Short).setPlaceholder(`golem | ${propList.substring(0, 40)}`).setRequired(true)
+          )
+        );
+        return interaction.showModal(modal);
+      }
+
+      // Donner un objet à un autre joueur
+      if (id.startsWith('btn_transferer_joueur_')) {
+        const userId = id.replace('btn_transferer_joueur_', '');
+        const messageId = interaction.message.id;
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+
+        const invStr = (fiche.inventaire || []).length > 0
+          ? fiche.inventaire.map((o, i) => `${i + 1}.${o.nom}${o.quantite > 1 ? `×${o.quantite}` : ''}`).join(', ')
+          : '(vide)';
+
+        const modal = new ModalBuilder().setCustomId(`modal_donner_joueur_${userId}__${messageId}`).setTitle('Donner un objet à un joueur');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('donner_source').setLabel('Source : "inv" ou "golem"').setStyle(TextInputStyle.Short).setPlaceholder('inv').setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('donner_num').setLabel('N° de l\'objet à donner').setStyle(TextInputStyle.Short).setPlaceholder(`${invStr.substring(0, 80)}`).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('donner_qte').setLabel('Quantité à donner (défaut: tout)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('donner_cible').setLabel('ID Discord du joueur destinataire').setStyle(TextInputStyle.Short).setPlaceholder('ex: 123456789012345678').setRequired(true)
+          )
+        );
+        return interaction.showModal(modal);
+      }
+
+      // Vendre un objet
+      if (id.startsWith('btn_vendre_')) {
+        const userId = id.replace('btn_vendre_', '');
+        const messageId = interaction.message.id;
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+
+        const invStr = (fiche.inventaire || []).length > 0
+          ? fiche.inventaire.map((o, i) => `${i + 1}.${o.nom}${o.quantite > 1 ? `×${o.quantite}` : ''}`).join(', ')
+          : '(vide)';
+
+        const modal = new ModalBuilder().setCustomId(`modal_vendre_${userId}__${messageId}`).setTitle('💸 Vendre un objet');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('vendre_source').setLabel('Source : "inv" ou "golem"').setStyle(TextInputStyle.Short).setPlaceholder('inv').setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('vendre_num').setLabel('N° de l\'objet à vendre').setStyle(TextInputStyle.Short).setPlaceholder(`${invStr.substring(0, 80)}`).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('vendre_qte').setLabel('Quantité à vendre').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('vendre_prix').setLabel('Prix de vente total (en kyp)').setStyle(TextInputStyle.Short).setPlaceholder('500').setRequired(true)
           )
         );
         return interaction.showModal(modal);
@@ -281,9 +330,7 @@ module.exports = {
 
         if (fiche.vies === 0) {
           await setFiche(userId, fiche);
-          // Mettre à jour l'affichage d'abord
           await updateMessage(interaction, userId, true);
-          // Puis demander confirmation pour supprimer
           const { ActionRowBuilder: ARB, ButtonBuilder: BB, ButtonStyle: BS } = require('discord.js');
           const confirmRow = new ARB().addComponents(
             new BB().setCustomId(`btn_confirmer_mort_${userId}`).setLabel('⚰️ Oui, supprimer la fiche').setStyle(BS.Danger),
@@ -296,7 +343,7 @@ module.exports = {
         return updateMessage(interaction, userId, true);
       }
 
-      // Confirmation mort - supprimer fiche
+      // Confirmation mort
       if (id.startsWith('btn_confirmer_mort_')) {
         const userId = id.replace('btn_confirmer_mort_', '');
         await deleteFiche(userId);
@@ -308,7 +355,6 @@ module.exports = {
         return interaction.update({ content: '✅ La fiche a été conservée.', components: [] });
       }
 
-      // Argent ajouter/retirer (via anciens customIds depuis select menu)
       const messageId = interaction.message.id;
 
       if (id.startsWith('argent_ajouter_') || id.startsWith('argent_retirer_')) {
@@ -372,17 +418,19 @@ module.exports = {
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      // Objet inventaire golem
       if (baseId.startsWith('modal_objet_golem_')) {
         const userId = baseId.replace('modal_objet_golem_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const nom = interaction.fields.getTextInputValue('objet_nom');
+        const nom = interaction.fields.getTextInputValue('objet_nom').trim();
         const niveauRaw = interaction.fields.getTextInputValue('objet_niveau').trim();
         const niveau = niveauRaw !== '' ? parseInt(niveauRaw) : null;
         if (niveauRaw !== '' && (isNaN(niveau) || niveau < 1)) return interaction.reply({ content: '❌ Niveau invalide !', ephemeral: true });
+        const qteRaw = interaction.fields.getTextInputValue('objet_quantite').trim();
+        const quantite = qteRaw !== '' ? parseInt(qteRaw) : 1;
+        if (isNaN(quantite) || quantite < 1) return interaction.reply({ content: '❌ Quantité invalide !', ephemeral: true });
         if (!fiche.inventaireGolems) fiche.inventaireGolems = [];
-        fiche.inventaireGolems.push({ nom, niveau });
+        fiche.inventaireGolems.push({ nom, niveau, quantite });
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
@@ -391,11 +439,14 @@ module.exports = {
         const userId = baseId.replace('modal_objet_', '');
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const nom = interaction.fields.getTextInputValue('objet_nom');
+        const nom = interaction.fields.getTextInputValue('objet_nom').trim();
         const niveauRaw = interaction.fields.getTextInputValue('objet_niveau').trim();
         const niveau = niveauRaw !== '' ? parseInt(niveauRaw) : null;
         if (niveauRaw !== '' && (isNaN(niveau) || niveau < 1)) return interaction.reply({ content: '❌ Niveau invalide !', ephemeral: true });
-        fiche.inventaire.push({ nom, niveau });
+        const qteRaw = interaction.fields.getTextInputValue('objet_quantite').trim();
+        const quantite = qteRaw !== '' ? parseInt(qteRaw) : 1;
+        if (isNaN(quantite) || quantite < 1) return interaction.reply({ content: '❌ Quantité invalide !', ephemeral: true });
+        fiche.inventaire.push({ nom, niveau, quantite });
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
@@ -454,7 +505,6 @@ module.exports = {
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      // Supprimer objet inventaire golem
       if (baseId.startsWith('modal_suppr_objet_golem_')) {
         const userId = baseId.replace('modal_suppr_objet_golem_', '');
         const fiche = await getFiche(userId);
@@ -511,7 +561,7 @@ module.exports = {
         return updateMessage(interaction, userId, false, messageId);
       }
 
-      // Transfert entre inventaires (supporte multi-items et propriétés)
+      // ── Transfert interne (même joueur, entre inventaires) ──
       if (baseId.startsWith('modal_transferer_')) {
         const userId = baseId.replace('modal_transferer_', '');
         const fiche = await getFiche(userId);
@@ -520,8 +570,8 @@ module.exports = {
         const source = interaction.fields.getTextInputValue('transferer_source').trim().toLowerCase();
         const dest = interaction.fields.getTextInputValue('transferer_dest').trim().toLowerCase();
         const numRaw = interaction.fields.getTextInputValue('transferer_num').trim();
+        const qteRaw = interaction.fields.getTextInputValue('transferer_qte').trim();
 
-        // Résoudre la source (inv, golem, prop1, prop2...)
         function resolveArray(key) {
           if (key === 'inv') return { array: fiche.inventaire || [], type: 'inv' };
           if (key === 'golem') return { array: fiche.inventaireGolems || [], type: 'golem' };
@@ -530,9 +580,7 @@ module.exports = {
             const propIdx = parseInt(propMatch[1]) - 1;
             if (isNaN(propIdx) || propIdx < 0 || propIdx >= (fiche.proprietes || []).length) return null;
             const prop = fiche.proprietes[propIdx];
-            if (typeof prop === 'string') {
-              fiche.proprietes[propIdx] = { nom: prop, objets: [] };
-            }
+            if (typeof prop === 'string') fiche.proprietes[propIdx] = { nom: prop, objets: [] };
             if (!fiche.proprietes[propIdx].objets) fiche.proprietes[propIdx].objets = [];
             return { array: fiche.proprietes[propIdx].objets, type: 'prop', propIdx };
           }
@@ -546,48 +594,54 @@ module.exports = {
         }
 
         const srcResolved = resolveArray(source);
-        if (!srcResolved) return interaction.reply({ content: '❌ Source invalide ! Utilisez "inv", "golem" ou "prop1", "prop2"...', ephemeral: true });
-
+        if (!srcResolved) return interaction.reply({ content: '❌ Source invalide ! Utilisez "inv", "golem" ou "prop1"...', ephemeral: true });
         const destResolved = resolveArray(dest);
-        if (!destResolved) return interaction.reply({ content: '❌ Destination invalide ! Utilisez "inv", "golem" ou "prop1", "prop2"...', ephemeral: true });
+        if (!destResolved) return interaction.reply({ content: '❌ Destination invalide ! Utilisez "inv", "golem" ou "prop1"...', ephemeral: true });
+        if (source === dest) return interaction.reply({ content: '❌ Source et destination identiques !', ephemeral: true });
 
-        if (source === dest) return interaction.reply({ content: '❌ La source et la destination doivent être différentes !', ephemeral: true });
-
-        // Parser les numéros (supporte "1" ou "1;3;5")
         const numParts = numRaw.split(';').map(s => parseInt(s.trim()) - 1);
-        if (numParts.some(n => isNaN(n))) return interaction.reply({ content: '❌ Format invalide ! Entrez un numéro ou plusieurs séparés par ";" (ex: 1;3;5).', ephemeral: true });
+        if (numParts.some(n => isNaN(n))) return interaction.reply({ content: '❌ Format N° invalide (ex: 1 ou 1;3;5).', ephemeral: true });
 
         const srcArray = [...srcResolved.array];
         const destArray = [...destResolved.array];
-
-        // Trier en ordre décroissant pour supprimer sans décaler les index
         const sortedNums = [...new Set(numParts)].sort((a, b) => b - a);
 
         for (const num of sortedNums) {
           if (num < 0 || num >= srcArray.length) {
-            return interaction.reply({ content: `❌ Numéro ${num + 1} invalide (l'inventaire source a ${srcArray.length} objet(s)).`, ephemeral: true });
+            return interaction.reply({ content: `❌ Numéro ${num + 1} invalide (source: ${srcArray.length} objet(s)).`, ephemeral: true });
           }
         }
 
-        // Extraire les objets dans l'ordre original (croissant)
+        // Quantité demandée (s'applique uniquement si 1 seul item sélectionné)
+        const qteVoulue = qteRaw !== '' ? parseInt(qteRaw) : null;
+
         const toTransfer = sortedNums.sort((a, b) => a - b).map(n => srcArray[n]);
 
-        // Supprimer en ordre décroissant
         for (const num of sortedNums.sort((a, b) => b - a)) {
-          srcArray.splice(num, 1);
+          const obj = srcArray[num];
+          // Gestion quantité
+          if (qteVoulue != null && numParts.length === 1 && typeof obj !== 'string' && obj.quantite != null && obj.quantite > qteVoulue) {
+            srcArray[num] = { ...obj, quantite: obj.quantite - qteVoulue };
+            // Ne pas splice, on laisse l'objet avec la quantité réduite
+          } else {
+            srcArray.splice(num, 1);
+          }
         }
 
-        // Ajouter à la destination
-        // Pour les propriétés, les objets sont des strings ; pour inv/golem, ce sont des {nom, niveau}
         for (const obj of toTransfer) {
+          const qteTransfert = (qteVoulue != null && numParts.length === 1 && typeof obj !== 'string' && obj.quantite != null) ? Math.min(qteVoulue, obj.quantite) : (typeof obj !== 'string' ? (obj.quantite ?? 1) : 1);
           if (destResolved.type === 'prop') {
-            // Convertir objet en string pour les propriétés
             const nomStr = typeof obj === 'string' ? obj : (obj.niveau != null ? `${obj.nom} (niv.${obj.niveau})` : obj.nom);
             destArray.push(nomStr);
           } else {
-            // Convertir string en objet pour inv/golem
-            const objFmt = typeof obj === 'string' ? { nom: obj, niveau: null } : obj;
-            destArray.push(objFmt);
+            const objFmt = typeof obj === 'string' ? { nom: obj, niveau: null, quantite: 1 } : { ...obj, quantite: qteTransfert };
+            // Fusionner si même nom+niveau
+            const existing = destArray.find(d => typeof d !== 'string' && d.nom === objFmt.nom && d.niveau === objFmt.niveau);
+            if (existing) {
+              existing.quantite = (existing.quantite ?? 1) + qteTransfert;
+            } else {
+              destArray.push(objFmt);
+            }
           }
         }
 
@@ -596,6 +650,111 @@ module.exports = {
 
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, false, messageId);
+      }
+
+      // ── Donner un objet à un autre joueur ──
+      if (baseId.startsWith('modal_donner_joueur_')) {
+        const userId = baseId.replace('modal_donner_joueur_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+
+        const source = interaction.fields.getTextInputValue('donner_source').trim().toLowerCase();
+        const numRaw = parseInt(interaction.fields.getTextInputValue('donner_num').trim()) - 1;
+        const qteRaw = interaction.fields.getTextInputValue('donner_qte').trim();
+        const cibleId = interaction.fields.getTextInputValue('donner_cible').trim();
+
+        if (!['inv', 'golem'].includes(source)) return interaction.reply({ content: '❌ Source invalide ! "inv" ou "golem".', ephemeral: true });
+
+        const srcArray = source === 'inv' ? (fiche.inventaire || []) : (fiche.inventaireGolems || []);
+        if (isNaN(numRaw) || numRaw < 0 || numRaw >= srcArray.length) return interaction.reply({ content: '❌ Numéro d\'objet invalide !', ephemeral: true });
+
+        const ficheCible = await getFiche(cibleId);
+        if (!ficheCible) return interaction.reply({ content: `❌ Aucune fiche trouvée pour le joueur \`${cibleId}\`.`, ephemeral: true });
+
+        const obj = srcArray[numRaw];
+        const qteVoulue = qteRaw !== '' ? parseInt(qteRaw) : (obj.quantite ?? 1);
+        if (isNaN(qteVoulue) || qteVoulue < 1) return interaction.reply({ content: '❌ Quantité invalide !', ephemeral: true });
+        const qteDisponible = obj.quantite ?? 1;
+        if (qteVoulue > qteDisponible) return interaction.reply({ content: `❌ Quantité insuffisante ! L'objet n'a que ×${qteDisponible}.`, ephemeral: true });
+
+        // Retirer de la source
+        if (qteVoulue >= qteDisponible) {
+          srcArray.splice(numRaw, 1);
+        } else {
+          srcArray[numRaw] = { ...obj, quantite: qteDisponible - qteVoulue };
+        }
+
+        if (source === 'inv') fiche.inventaire = srcArray;
+        else fiche.inventaireGolems = srcArray;
+
+        // Ajouter à la cible
+        if (!ficheCible.inventaire) ficheCible.inventaire = [];
+        const objDonne = { ...obj, quantite: qteVoulue };
+        const existing = ficheCible.inventaire.find(d => d.nom === objDonne.nom && d.niveau === objDonne.niveau);
+        if (existing) {
+          existing.quantite = (existing.quantite ?? 1) + qteVoulue;
+        } else {
+          ficheCible.inventaire.push(objDonne);
+        }
+
+        await setFiche(userId, fiche);
+        await setFiche(cibleId, ficheCible);
+
+        // Mettre à jour la fiche source affichée
+        await updateMessage(interaction, userId, false, messageId);
+
+        // Notifier dans le channel
+        const nomObjet = obj.niveau != null ? `${obj.nom} (niv.${obj.niveau})` : obj.nom;
+        try {
+          await interaction.channel.send(`✅ **<@${userId}>** a donné **${qteVoulue}× ${nomObjet}** à **<@${cibleId}>**.`);
+        } catch {}
+        return;
+      }
+
+      // ── Vendre un objet ──
+      if (baseId.startsWith('modal_vendre_')) {
+        const userId = baseId.replace('modal_vendre_', '');
+        const fiche = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+
+        const source = interaction.fields.getTextInputValue('vendre_source').trim().toLowerCase();
+        const numRaw = parseInt(interaction.fields.getTextInputValue('vendre_num').trim()) - 1;
+        const qteRaw = parseInt(interaction.fields.getTextInputValue('vendre_qte').trim());
+        const prix = parseInt(interaction.fields.getTextInputValue('vendre_prix').trim());
+
+        if (!['inv', 'golem'].includes(source)) return interaction.reply({ content: '❌ Source invalide ! "inv" ou "golem".', ephemeral: true });
+
+        const srcArray = source === 'inv' ? (fiche.inventaire || []) : (fiche.inventaireGolems || []);
+        if (isNaN(numRaw) || numRaw < 0 || numRaw >= srcArray.length) return interaction.reply({ content: '❌ Numéro d\'objet invalide !', ephemeral: true });
+        if (isNaN(qteRaw) || qteRaw < 1) return interaction.reply({ content: '❌ Quantité invalide !', ephemeral: true });
+        if (isNaN(prix) || prix < 0) return interaction.reply({ content: '❌ Prix invalide !', ephemeral: true });
+
+        const obj = srcArray[numRaw];
+        const qteDisponible = obj.quantite ?? 1;
+        if (qteRaw > qteDisponible) return interaction.reply({ content: `❌ Quantité insuffisante ! L'objet n'a que ×${qteDisponible}.`, ephemeral: true });
+
+        // Retirer la quantité vendue
+        if (qteRaw >= qteDisponible) {
+          srcArray.splice(numRaw, 1);
+        } else {
+          srcArray[numRaw] = { ...obj, quantite: qteDisponible - qteRaw };
+        }
+
+        if (source === 'inv') fiche.inventaire = srcArray;
+        else fiche.inventaireGolems = srcArray;
+
+        // Ajouter l'argent
+        fiche.argent = (fiche.argent || 0) + prix;
+
+        await setFiche(userId, fiche);
+
+        const nomObjet = obj.niveau != null ? `${obj.nom} (niv.${obj.niveau})` : obj.nom;
+        await updateMessage(interaction, userId, false, messageId);
+
+        try {
+          await interaction.channel.send(`💸 **<@${userId}>** a vendu **${qteRaw}× ${nomObjet}** pour **${prix} kyp**.`);
+        } catch {}
+        return;
       }
     }
   }
@@ -632,7 +791,8 @@ async function updateMessage(interaction, userId, isButton = false, messageId = 
     }
     await msg.edit({ embeds: [embed], components });
   } catch (e) {
-    console.error('Erreur lors de l\'édition du message:', e);
-    await interaction.followUp({ content: '✅ Mis à jour (impossible d\'éditer le message) !', ephemeral: true });
+    console.error('Erreur édition message:', e);
+    await interaction.followUp({ content: '✅ Mis à jour !', ephemeral: true });
   }
 }
+ENDOFFILE

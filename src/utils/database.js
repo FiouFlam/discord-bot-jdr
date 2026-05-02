@@ -49,4 +49,4 @@ async function getAllFiches() {
   return fiches;
 }
 
-module.exports = { getFiche, setFiche, deleteFiche, getAllFiches };
+module.exports = { getFiche, setFiche, deleteFiche, getAllFiches, connect };

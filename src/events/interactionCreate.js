@@ -16,6 +16,17 @@ const {
   removeFromInventoryByIndex,
 } = require('../utils/ficheBuilder');
 
+// ─── Helper : récupère la rangée de navigation si elle existe dans le message ──
+function getNavRow(msg) {
+  if (!msg) return null;
+  const last = msg.components[msg.components.length - 1];
+  if (!last) return null;
+  const hasNav = last.components?.some(c =>
+    c.customId?.startsWith('nav_prev_') || c.customId?.startsWith('nav_next_')
+  );
+  return hasNav ? last : null;
+}
+
 // ─── Helper : trouve l'ID d'un joueur par son nom (username ou displayName) ───
 async function findPlayerIdByName(client, name) {
   const fiches = await getAllFiches();
@@ -327,9 +338,8 @@ module.exports = {
         const transferMenu = buildTransferActionMenu(userId);
         const msg = interaction.message;
         let components = [...ficheButtons, transferMenu];
-        if (msg && msg.components.length > ficheButtons.length + 1) {
-          components.push(msg.components[msg.components.length - 1]);
-        }
+        const navRow = getNavRow(msg);
+        if (navRow) components.push(navRow);
         return interaction.update({ embeds: [embed], components });
       }
 
@@ -391,9 +401,8 @@ module.exports = {
         const msg = interaction.message;
         let components = [...ficheButtons, golemMenu];
         // Conserve navigation si présente
-        if (msg && msg.components.length > ficheButtons.length + 1) {
-          components.push(msg.components[msg.components.length - 1]);
-        }
+        const navRow = getNavRow(msg);
+        if (navRow) components.push(navRow);
         return interaction.update({ embeds: [embed], components });
       }
 
@@ -407,9 +416,8 @@ module.exports = {
         const propMenu = buildPropActionMenu(userId);
         const msg = interaction.message;
         let components = [...ficheButtons, propMenu];
-        if (msg && msg.components.length > ficheButtons.length + 1) {
-          components.push(msg.components[msg.components.length - 1]);
-        }
+        const navRow = getNavRow(msg);
+        if (navRow) components.push(navRow);
         return interaction.update({ embeds: [embed], components });
       }
 
@@ -773,9 +781,8 @@ async function updateMessage(interaction, userId, isButton = false, messageId = 
   if (isButton) {
     const msg = interaction.message;
     let components = [...buttons];
-    if (msg && msg.components.length > buttons.length) {
-      components.push(msg.components[msg.components.length - 1]);
-    }
+    const navRow = getNavRow(msg);
+    if (navRow) components.push(navRow);
     return interaction.update({ embeds: [embed], components });
   }
 
@@ -788,9 +795,8 @@ async function updateMessage(interaction, userId, isButton = false, messageId = 
   try {
     const msg = await interaction.channel.messages.fetch(messageId);
     let components = [...buttons];
-    if (msg && msg.components.length > buttons.length) {
-      components.push(msg.components[msg.components.length - 1]);
-    }
+    const navRow = getNavRow(msg);
+    if (navRow) components.push(navRow);
     await msg.edit({ embeds: [embed], components });
   } catch (e) {
     console.error('Erreur édition message:', e);

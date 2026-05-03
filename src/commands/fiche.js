@@ -48,6 +48,7 @@ module.exports = {
       const embed = buildFicheEmbed(fiche, targetUser);
       const buttons = buildFicheButtons(targetUser.id);
       await interaction.editReply({ embeds: [embed], components: buttons });
+      setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
     }
 
     if (sub === 'del') {

@@ -1,5 +1,5 @@
 // Stockage en mémoire des sessions actives
-// sessions : Map<guildId, string[]> (liste des userIds de la session)
+// sessions : Map<guildId, { userIds: string[], message: Message | null }>
 const sessions = new Map();
 
 module.exports = { sessions };

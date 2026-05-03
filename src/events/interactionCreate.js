@@ -189,10 +189,9 @@ module.exports = {
               .addOptions(options)
           );
           const ficheButtons = buildFicheButtons(userId);
-          const transferMenu = buildTransferActionMenu(userId);
           const msg = interaction.message;
           const navRow = getNavRow(msg);
-          const components = [...ficheButtons, transferMenu, selectMenu];
+          const components = [...ficheButtons, selectMenu];
           if (navRow) components.push(navRow);
           return interaction.update({ embeds: interaction.message.embeds, components });
         }

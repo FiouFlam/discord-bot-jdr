@@ -1,4 +1,4 @@
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const { getFiche, setFiche, getAllFiches } = require('../utils/database');
 const {
   buildFicheEmbed,
@@ -162,31 +162,84 @@ module.exports = {
           );
           return interaction.showModal(modal);
         } else if (action === 'joueur') {
-          // Transfert vers un autre joueur
-          const modal = new ModalBuilder()
-            .setCustomId(`modal_transferer_joueur_${userId}__${messageId}`)
-            .setTitle('👤 Transfert joueur');
-          modal.addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('cible_joueur')
-                .setLabel('Joueur destinataire')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('Pseudo ou ID Discord')
-                .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('source').setLabel('Inventaire source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (par objet)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
-            ),
+          // Afficher un select menu avec la liste des joueurs ayant une fiche
+          const fiches = await getAllFiches();
+          const autreJoueurs = Object.entries(fiches).filter(([id]) => id !== userId);
+          if (autreJoueurs.length === 0) {
+            return interaction.reply({ content: '❌ Aucun autre joueur avec une fiche.', ephemeral: true });
+          }
+          const options = [];
+          for (const [id] of autreJoueurs.slice(0, 25)) {
+            let label = id;
+            try {
+              const u = await interaction.client.users.fetch(id);
+              label = u.username;
+            } catch {}
+            const nomFiche = fiches[id]?.nom || '';
+            options.push({
+              label: label.substring(0, 25),
+              value: id,
+              description: nomFiche ? nomFiche.substring(0, 50) : undefined,
+            });
+          }
+          const selectMenu = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`select_transferer_joueur_cible_${userId}__${messageId}`)
+              .setPlaceholder('Choisir le joueur destinataire')
+              .addOptions(options)
           );
-          return interaction.showModal(modal);
+          const ficheButtons = buildFicheButtons(userId);
+          const transferMenu = buildTransferActionMenu(userId);
+          const msg = interaction.message;
+          const navRow = getNavRow(msg);
+          const components = [...ficheButtons, transferMenu, selectMenu];
+          if (navRow) components.push(navRow);
+          return interaction.update({ embeds: interaction.message.embeds, components });
         }
+      }
+
+      // Joueur cible argent sélectionné → modal pour le montant
+      if (id.startsWith('select_argent_cible_')) {
+        const rest = id.replace('select_argent_cible_', '');
+        const [userId] = rest.split('__');
+        const cibleId = interaction.values[0];
+        let cibleLabel = cibleId;
+        try { const u = await interaction.client.users.fetch(cibleId); cibleLabel = u.username; } catch {}
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_transfert_argent_${userId}_cible_${cibleId}__${messageId}`)
+          .setTitle(`💳 Transfert → ${cibleLabel.substring(0, 20)}`);
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('montant').setLabel('Montant (en kyp)').setStyle(TextInputStyle.Short).setPlaceholder('500').setRequired(true)
+          ),
+        );
+        return interaction.showModal(modal);
+      }
+
+      // Joueur cible sélectionné → modal pour choisir objet
+      if (id.startsWith('select_transferer_joueur_cible_')) {
+        const rest = id.replace('select_transferer_joueur_cible_', '');
+        const [userId] = rest.split('__');
+        const cibleId = interaction.values[0];
+        const fiche = await getFiche(userId);
+        const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
+        let cibleLabel = cibleId;
+        try { const u = await interaction.client.users.fetch(cibleId); cibleLabel = u.username; } catch {}
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_transferer_joueur_${userId}_cible_${cibleId}__${messageId}`)
+          .setTitle(`👤 Transfert → ${cibleLabel.substring(0, 20)}`);
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('source').setLabel('Inventaire source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (par objet)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+          ),
+        );
+        return interaction.showModal(modal);
       }
     }
 
@@ -346,23 +399,34 @@ module.exports = {
       // 💳 Transférer argent — FIX: accepte pseudo OU ID
       if (id.startsWith('btn_transfert_argent_')) {
         const userId = id.replace('btn_transfert_argent_', '');
-        const modal = new ModalBuilder()
-          .setCustomId(`modal_transfert_argent_${userId}__${messageId}`)
-          .setTitle('💳 Transférer de l\'argent');
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('cible_id')
-              .setLabel('Pseudo ou ID Discord du destinataire')
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder('NomDuJoueur ou 123456789012345678')
-              .setRequired(true)
-          ),
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('montant').setLabel('Montant (en kyp)').setStyle(TextInputStyle.Short).setPlaceholder('500').setRequired(true)
-          ),
+        const fiches = await getAllFiches();
+        const autresJoueurs = Object.entries(fiches).filter(([id]) => id !== userId);
+        if (autresJoueurs.length === 0) {
+          return interaction.reply({ content: '❌ Aucun autre joueur avec une fiche.', ephemeral: true });
+        }
+        const options = [];
+        for (const [id] of autresJoueurs.slice(0, 25)) {
+          let label = id;
+          try { const u = await interaction.client.users.fetch(id); label = u.username; } catch {}
+          const nomFiche = fiches[id]?.nom || '';
+          options.push({
+            label: label.substring(0, 25),
+            value: id,
+            description: nomFiche ? nomFiche.substring(0, 50) : undefined,
+          });
+        }
+        const selectMenu = new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`select_argent_cible_${userId}__${messageId}`)
+            .setPlaceholder('Choisir le joueur destinataire')
+            .addOptions(options)
         );
-        return interaction.showModal(modal);
+        const ficheButtons = buildFicheButtons(userId);
+        const msg = interaction.message;
+        const navRow = getNavRow(msg);
+        const components = [...ficheButtons, selectMenu];
+        if (navRow) components.push(navRow);
+        return interaction.update({ embeds: interaction.message.embeds, components });
       }
 
       // 💰 Vendre
@@ -615,22 +679,21 @@ module.exports = {
 
       // 👤 Transférer joueur (vers l'inventaire perso d'un autre joueur)
       if (baseId.startsWith('modal_transferer_joueur_')) {
-        const userId = baseId.replace('modal_transferer_joueur_', '');
+        // format: modal_transferer_joueur_{userId}_cible_{cibleId}
+        const rest = baseId.replace('modal_transferer_joueur_', '');
+        const cibleMatch = rest.match(/^(.+)_cible_(.+)$/);
+        if (!cibleMatch) return interaction.reply({ content: '❌ Format invalide.', ephemeral: true });
+        const userId = cibleMatch[1];
+        const cibleId = cibleMatch[2];
+
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const cibleInput = interaction.fields.getTextInputValue('cible_joueur').trim();
-        const srcName  = interaction.fields.getTextInputValue('source').trim() || 'perso';
-        const objetNumRaw = interaction.fields.getTextInputValue('objet_numero').trim();
-        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
-
-        // Résoudre le joueur cible
-        let cibleId = cibleInput;
-        if (!/^\d+$/.test(cibleInput)) {
-          cibleId = await findPlayerIdByName(interaction.client, cibleInput);
-          if (!cibleId) return interaction.reply({ content: `❌ Joueur "${cibleInput}" introuvable. Essaie avec son ID Discord.`, ephemeral: true });
-        }
         const ficheCible = await getFiche(cibleId);
-        if (!ficheCible) return interaction.reply({ content: `❌ Fiche du joueur "${cibleInput}" introuvable.`, ephemeral: true });
+        if (!ficheCible) return interaction.reply({ content: '❌ Fiche du joueur cible introuvable.', ephemeral: true });
+
+        const srcName     = interaction.fields.getTextInputValue('source').trim() || 'perso';
+        const objetNumRaw = interaction.fields.getTextInputValue('objet_numero').trim();
+        const quantite    = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
 
         const src = resolveInventoryByLabel(fiche, srcName);
         if (!src) return interaction.reply({ content: `❌ Source "${srcName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
@@ -652,7 +715,6 @@ module.exports = {
         for (const { num, nom } of toTransfer) {
           const err = removeFromInventoryByIndex(src.arr, num - 1, quantite, src.type);
           if (err) { errors.push(err); continue; }
-          // Ajouter dans l'inventaire perso du joueur cible
           if (!Array.isArray(ficheCible.inventaire)) ficheCible.inventaire = [];
           addToInventory(ficheCible.inventaire, nom, quantite, 'perso');
         }
@@ -664,23 +726,19 @@ module.exports = {
 
       // 💳 Transférer argent — FIX: accepte pseudo OU ID Discord
       if (baseId.startsWith('modal_transfert_argent_')) {
-        const userId = baseId.replace('modal_transfert_argent_', '');
+        const rest = baseId.replace('modal_transfert_argent_', '');
+        const cibleMatch = rest.match(/^(.+)_cible_(.+)$/);
+        if (!cibleMatch) return interaction.reply({ content: '❌ Format invalide.', ephemeral: true });
+        const userId = cibleMatch[1];
+        const cibleId = cibleMatch[2];
+
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const cibleInput = interaction.fields.getTextInputValue('cible_id').trim();
         const montant = parseInt(interaction.fields.getTextInputValue('montant').trim());
         if (isNaN(montant) || montant <= 0) return interaction.reply({ content: '❌ Montant invalide !', ephemeral: true });
 
-        // Résoudre cible : ID numérique direct, ou recherche par pseudo
-        let cibleId = cibleInput;
-        if (!/^\d+$/.test(cibleInput)) {
-          // Recherche par pseudo
-          cibleId = await findPlayerIdByName(interaction.client, cibleInput);
-          if (!cibleId) return interaction.reply({ content: `❌ Joueur "${cibleInput}" introuvable. Essaie avec son ID Discord.`, ephemeral: true });
-        }
-
         const ficheCible = await getFiche(cibleId);
-        if (!ficheCible) return interaction.reply({ content: `❌ Fiche du joueur "${cibleInput}" introuvable.`, ephemeral: true });
+        if (!ficheCible) return interaction.reply({ content: '❌ Fiche du joueur cible introuvable.', ephemeral: true });
         if ((fiche.argent ?? 0) < montant) return interaction.reply({ content: `❌ Fonds insuffisants ! Solde : ${fiche.argent ?? 0} kyp.`, ephemeral: true });
         fiche.argent = (fiche.argent ?? 0) - montant;
         ficheCible.argent = (ficheCible.argent ?? 0) + montant;

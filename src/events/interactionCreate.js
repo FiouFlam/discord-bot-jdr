@@ -81,7 +81,6 @@ module.exports = {
       // Lancement session
       if (id === 'select_session_joueurs') {
         const selectedIds = interaction.values;
-        sessions.set(interaction.guildId, selectedIds);
 
         const index = 0;
         const userId = selectedIds[index];
@@ -94,11 +93,16 @@ module.exports = {
         embed.setFooter({ text: `Session • Fiche ${index + 1} / ${selectedIds.length}` });
         const ficheButtons = buildFicheButtons(userId);
         const navButtons = buildNavigationButtons(index, selectedIds.length, userId);
-        return interaction.update({
+        await interaction.update({
           content: `🎮 **Session lancée** avec ${selectedIds.length} joueur(s) !`,
           embeds: [embed],
           components: [...ficheButtons, navButtons],
         });
+
+        // Stocker la session avec le message pour pouvoir le supprimer avec /end
+        const msg = await interaction.fetchReply().catch(() => interaction.message);
+        sessions.set(interaction.guildId, { userIds: selectedIds, message: msg });
+        return;
       }
 
       // Golem action
@@ -284,7 +288,7 @@ module.exports = {
         let userIds;
         const session = sessions.get(interaction.guildId);
         if (session) {
-          userIds = session;
+          userIds = session.userIds;
         } else {
           const fiches = await getAllFiches();
           userIds = Object.keys(fiches);

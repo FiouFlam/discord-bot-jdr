@@ -1,5 +1,6 @@
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const { getFiche, setFiche, getAllFiches } = require('../utils/database');
+const { sessions } = require('../utils/session');
 const {
   buildFicheEmbed,
   buildFicheButtons,
@@ -76,6 +77,29 @@ module.exports = {
       }
       const id = interaction.customId;
       const messageId = interaction.message.id;
+
+      // Lancement session
+      if (id === 'select_session_joueurs') {
+        const selectedIds = interaction.values;
+        sessions.set(interaction.guildId, selectedIds);
+
+        const index = 0;
+        const userId = selectedIds[index];
+        const fiche = await getFiche(userId);
+        let targetUser;
+        try { targetUser = await interaction.client.users.fetch(userId); }
+        catch { targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null }; }
+
+        const embed = buildFicheEmbed(fiche, targetUser);
+        embed.setFooter({ text: `Session • Fiche ${index + 1} / ${selectedIds.length}` });
+        const ficheButtons = buildFicheButtons(userId);
+        const navButtons = buildNavigationButtons(index, selectedIds.length, userId);
+        return interaction.update({
+          content: `🎮 **Session lancée** avec ${selectedIds.length} joueur(s) !`,
+          embeds: [embed],
+          components: [...ficheButtons, navButtons],
+        });
+      }
 
       // Golem action
       if (id.startsWith('select_golem_action_')) {
@@ -255,8 +279,17 @@ module.exports = {
         const parts = id.split('_');
         const direction = parts[1];
         const currentIndex = parseInt(parts[2]);
-        const fiches = await getAllFiches();
-        const userIds = Object.keys(fiches);
+
+        // Utilise la liste de la session si active, sinon toutes les fiches
+        let userIds;
+        const session = sessions.get(interaction.guildId);
+        if (session) {
+          userIds = session;
+        } else {
+          const fiches = await getAllFiches();
+          userIds = Object.keys(fiches);
+        }
+
         let newIndex;
         if (direction === 'next') {
           newIndex = (currentIndex + 1) % userIds.length;
@@ -264,12 +297,13 @@ module.exports = {
           newIndex = (currentIndex - 1 + userIds.length) % userIds.length;
         }
         const userId = userIds[newIndex];
-        const fiche = fiches[userId];
+        const fiche = await getFiche(userId);
         let targetUser;
         try { targetUser = await interaction.client.users.fetch(userId); }
         catch { targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null }; }
         const embed = buildFicheEmbed(fiche, targetUser);
-        embed.setFooter({ text: `Fiche ${newIndex + 1} / ${userIds.length}` });
+        const label = session ? 'Session' : 'Fiche';
+        embed.setFooter({ text: `${label} • Fiche ${newIndex + 1} / ${userIds.length}` });
         const ficheButtons = buildFicheButtons(userId);
         const navButtons = buildNavigationButtons(newIndex, userIds.length, userId);
         return interaction.update({ embeds: [embed], components: [...ficheButtons, navButtons] });

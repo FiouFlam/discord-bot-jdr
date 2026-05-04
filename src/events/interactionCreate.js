@@ -115,7 +115,7 @@ module.exports = {
             .setTitle('🪨 Ajouter un golem');
           modal.addComponents(
             new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('nom').setLabel('Nom du golem').setStyle(TextInputStyle.Short).setRequired(true)
+              new TextInputBuilder().setCustomId('nom').setLabel('Nom du golem').setStyle(TextInputStyle.Short).setPlaceholder('ex: Golem de pierre niv.3').setRequired(true)
             ),
           );
           return interaction.showModal(modal);
@@ -144,7 +144,7 @@ module.exports = {
             .setTitle('🏡 Ajouter une propriété');
           modal.addComponents(
             new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('nom').setLabel('Nom de la propriété').setStyle(TextInputStyle.Short).setRequired(true)
+              new TextInputBuilder().setCustomId('nom').setLabel('Nom de la propriété').setStyle(TextInputStyle.Short).setPlaceholder('ex: Petit abris en bois').setRequired(true)
             ),
           );
           return interaction.showModal(modal);
@@ -179,13 +179,13 @@ module.exports = {
               new TextInputBuilder().setCustomId('source').setLabel('Inventaire source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
             ),
             new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setRequired(true)
+              new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setPlaceholder('ex: 1  ou  1;3;5  pour plusieurs').setRequired(true)
             ),
             new ActionRowBuilder().addComponents(
               new TextInputBuilder().setCustomId('destination').setLabel('Inventaire destination (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder('perso, g1, p1...').setRequired(false)
             ),
             new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (par objet)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+              new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (vide = tout transférer)').setStyle(TextInputStyle.Short).setPlaceholder('vide = tout le stock de chaque objet').setRequired(false)
             ),
           );
           return interaction.showModal(modal);
@@ -260,10 +260,10 @@ module.exports = {
             new TextInputBuilder().setCustomId('source').setLabel('Inventaire source (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setPlaceholder('ex: 1  ou  1;3;5  pour plusieurs').setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (par objet)').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (vide = tout transférer)').setStyle(TextInputStyle.Short).setPlaceholder('vide = tout le stock de chaque objet').setRequired(false)
           ),
         );
         return interaction.showModal(modal);
@@ -388,10 +388,10 @@ module.exports = {
             new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('objet_nom').setLabel('Nom de l\'objet').setStyle(TextInputStyle.Short).setPlaceholder('ex: Viande, Hache niv.2...').setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (vide = 1)').setStyle(TextInputStyle.Short).setPlaceholder('vide = 1').setRequired(false)
           ),
         );
         return interaction.showModal(modal);
@@ -410,10 +410,10 @@ module.exports = {
             new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('objet_numero').setLabel('N° objet(s) — ex: 1 ou 1;3;5').setStyle(TextInputStyle.Short).setPlaceholder('ex: 1  ou  1;3;5  pour plusieurs').setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité à enlever').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité à enlever (vide = tout)').setStyle(TextInputStyle.Short).setPlaceholder('vide = tout le stock de chaque objet').setRequired(false)
           ),
         );
         return interaction.showModal(modal);
@@ -479,13 +479,13 @@ module.exports = {
             new TextInputBuilder().setCustomId('inventaire').setLabel('Inventaire (vide = perso)').setStyle(TextInputStyle.Short).setPlaceholder(invList.substring(0, 100)).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('objet_numero').setLabel('Numéro de l\'objet (dans l\'inventaire)').setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('objet_numero').setLabel('Numéro de l\'objet (dans l\'inventaire)').setStyle(TextInputStyle.Short).setPlaceholder('ex: 3').setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité').setStyle(TextInputStyle.Short).setPlaceholder('1').setRequired(false)
+            new TextInputBuilder().setCustomId('quantite').setLabel('Quantité (vide = tout vendre)').setStyle(TextInputStyle.Short).setPlaceholder('vide = tout le stock').setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('prix').setLabel('Prix de vente total (kyp)').setStyle(TextInputStyle.Short).setPlaceholder('100').setRequired(true)
+            new TextInputBuilder().setCustomId('prix').setLabel('Prix de vente total (kyp)').setStyle(TextInputStyle.Short).setPlaceholder('ex: 100').setRequired(true)
           ),
         );
         return interaction.showModal(modal);
@@ -530,7 +530,7 @@ module.exports = {
           .setTitle('🪨 Ajouter un golem');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('nom').setLabel('Nom du golem').setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('nom').setLabel('Nom du golem').setStyle(TextInputStyle.Short).setPlaceholder('ex: Golem de pierre niv.3').setRequired(true)
           ),
         );
         return interaction.showModal(modal);
@@ -560,7 +560,7 @@ module.exports = {
           .setTitle('🏡 Ajouter une propriété');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('nom').setLabel('Nom de la propriété').setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('nom').setLabel('Nom de la propriété').setStyle(TextInputStyle.Short).setPlaceholder('ex: Petit abris en bois').setRequired(true)
           ),
         );
         return interaction.showModal(modal);
@@ -651,7 +651,8 @@ module.exports = {
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const invName  = interaction.fields.getTextInputValue('inventaire').trim() || 'perso';
         const objetNumRaw = interaction.fields.getTextInputValue('objet_numero').trim();
-        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+        const quantiteRaw = interaction.fields.getTextInputValue('quantite').trim();
+        const quantite = quantiteRaw === '' ? null : parseInt(quantiteRaw);
         const inv = resolveInventoryByLabel(fiche, invName);
         if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
 
@@ -683,7 +684,8 @@ module.exports = {
         const srcName  = interaction.fields.getTextInputValue('source').trim() || 'perso';
         const dstName  = interaction.fields.getTextInputValue('destination').trim() || 'perso';
         const objetNumRaw = interaction.fields.getTextInputValue('objet_numero').trim();
-        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+        const quantiteRaw = interaction.fields.getTextInputValue('quantite').trim();
+        const quantite = quantiteRaw === '' ? null : parseInt(quantiteRaw);
 
         const src = resolveInventoryByLabel(fiche, srcName);
         if (!src) return interaction.reply({ content: `❌ Source "${srcName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
@@ -699,15 +701,17 @@ module.exports = {
           if (num < 1 || num > src.arr.length) { errors.push(`Numéro ${num} invalide`); continue; }
           const obj = src.arr[num - 1];
           const nom = (typeof obj === 'string') ? obj : (obj.nom || '???');
-          toTransfer.push({ num, nom });
+          // Si quantite null (champ vide) → prendre tout le stock de cet objet
+          const qtyItem = quantite === null ? (typeof obj === 'string' ? 1 : (obj.quantite || 1)) : quantite;
+          toTransfer.push({ num, nom, qtyItem });
         }
         if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs : ${errors.join(', ')}`, ephemeral: true });
 
         toTransfer.sort((a, b) => b.num - a.num);
-        for (const { num, nom } of toTransfer) {
-          const err = removeFromInventoryByIndex(src.arr, num - 1, quantite, src.type);
+        for (const { num, nom, qtyItem } of toTransfer) {
+          const err = removeFromInventoryByIndex(src.arr, num - 1, qtyItem, src.type);
           if (err) { errors.push(err); continue; }
-          addToInventory(dst.arr, nom, quantite, dst.type);
+          addToInventory(dst.arr, nom, qtyItem, dst.type);
         }
         if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs partielles : ${errors.join(', ')}`, ephemeral: true });
         await setFiche(userId, fiche);
@@ -730,7 +734,8 @@ module.exports = {
 
         const srcName     = interaction.fields.getTextInputValue('source').trim() || 'perso';
         const objetNumRaw = interaction.fields.getTextInputValue('objet_numero').trim();
-        const quantite    = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+        const quantiteRaw = interaction.fields.getTextInputValue('quantite').trim();
+        const quantite    = quantiteRaw === '' ? null : parseInt(quantiteRaw);
 
         const src = resolveInventoryByLabel(fiche, srcName);
         if (!src) return interaction.reply({ content: `❌ Source "${srcName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
@@ -744,16 +749,17 @@ module.exports = {
           if (num < 1 || num > src.arr.length) { errors.push(`Numéro ${num} invalide`); continue; }
           const obj = src.arr[num - 1];
           const nom = (typeof obj === 'string') ? obj : (obj.nom || '???');
-          toTransfer.push({ num, nom });
+          const qtyItem = quantite === null ? (typeof obj === 'string' ? 1 : (obj.quantite || 1)) : quantite;
+          toTransfer.push({ num, nom, qtyItem });
         }
         if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs : ${errors.join(', ')}`, ephemeral: true });
 
         toTransfer.sort((a, b) => b.num - a.num);
-        for (const { num, nom } of toTransfer) {
-          const err = removeFromInventoryByIndex(src.arr, num - 1, quantite, src.type);
+        for (const { num, nom, qtyItem } of toTransfer) {
+          const err = removeFromInventoryByIndex(src.arr, num - 1, qtyItem, src.type);
           if (err) { errors.push(err); continue; }
           if (!Array.isArray(ficheCible.inventaire)) ficheCible.inventaire = [];
-          addToInventory(ficheCible.inventaire, nom, quantite, 'perso');
+          addToInventory(ficheCible.inventaire, nom, qtyItem, 'perso');
         }
         if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs partielles : ${errors.join(', ')}`, ephemeral: true });
         await setFiche(userId, fiche);
@@ -791,7 +797,8 @@ module.exports = {
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const invName  = interaction.fields.getTextInputValue('inventaire').trim() || 'perso';
         const objetNum = parseInt(interaction.fields.getTextInputValue('objet_numero').trim());
-        const quantite = parseInt(interaction.fields.getTextInputValue('quantite').trim()) || 1;
+        const quantiteRaw = interaction.fields.getTextInputValue('quantite').trim();
+        const quantite = quantiteRaw === '' ? null : parseInt(quantiteRaw);
         const prix     = parseInt(interaction.fields.getTextInputValue('prix').trim());
         if (isNaN(prix) || prix < 0) return interaction.reply({ content: '❌ Prix invalide !', ephemeral: true });
         const inv = resolveInventoryByLabel(fiche, invName);

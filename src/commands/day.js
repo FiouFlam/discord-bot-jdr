@@ -1,25 +1,55 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { getAllFiches, setFiche } = require('../utils/database');
+const { getFiche, setFiche } = require('../utils/database');
+const { sessions } = require('../utils/session');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('day')
-    .setDescription('Passe un jour — ajoute les revenus journaliers à tous les joueurs')
+    .setDescription('Passe un jour — revenus + régénération HP (session requise)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
   async execute(interaction) {
-    const fiches = await getAllFiches();
-    const userIds = Object.keys(fiches);
-    if (userIds.length === 0) return interaction.editReply({ content: '❌ Aucune fiche trouvée.' });
-    let rapport = [];
+    const session = sessions.get(interaction.guildId);
+    if (!session) {
+      return interaction.editReply({ content: '❌ Aucune session en cours. Lance une session avec `/go` d\'abord.' });
+    }
+
+    const userIds = session.userIds;
+    if (userIds.length === 0) return interaction.editReply({ content: '❌ La session ne contient aucun joueur.' });
+
+    const rapport = [];
+
     for (const userId of userIds) {
-      const fiche = fiches[userId];
+      const fiche = await getFiche(userId);
+      if (!fiche) continue;
+
+      const lignes = [];
+
+      // Revenus journaliers
       if (fiche.revenu > 0) {
-        fiche.argent += fiche.revenu;
+        fiche.argent = (fiche.argent ?? 0) + fiche.revenu;
+        lignes.push(`+${fiche.revenu} kyp (total: ${fiche.argent} kyp)`);
+      }
+
+      // Régénération HP : +1 coeur si pas au max (5)
+      const hpActuel = fiche.hp ?? 5;
+      if (hpActuel < 5) {
+        fiche.hp = hpActuel + 1;
+        lignes.push(`❤️ HP : ${hpActuel} → ${fiche.hp}`);
+      }
+
+      if (lignes.length > 0) {
         await setFiche(userId, fiche);
-        rapport.push(`<@${userId}> → +${fiche.revenu} kyp (total: ${fiche.argent} kyp)`);
+        rapport.push(`<@${userId}> → ${lignes.join(' | ')}`);
       }
     }
-    if (rapport.length === 0) return interaction.editReply({ content: '☀️ Un jour est passé, mais personne n\'a de revenu configuré.' });
-    await interaction.editReply({ content: `☀️ **Un jour est passé !** Les revenus ont été distribués :\n\n${rapport.join('\n')}` });
+
+    if (rapport.length === 0) {
+      return interaction.editReply({ content: '☀️ Un jour est passé, mais rien à mettre à jour pour les joueurs de la session.' });
+    }
+
+    await interaction.editReply({
+      content: `☀️ **Un jour est passé !**\n\n${rapport.join('\n')}`,
+    });
   }
 };

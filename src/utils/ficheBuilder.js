@@ -354,10 +354,11 @@ function resolveInventoryByLabel(fiche, name) {
 
 // Supprime par index (0-based) dans arr
 function removeFromInventoryByIndex(arr, index, quantite, type) {
-  const qty = Math.max(1, parseInt(quantite) || 1);
   if (index < 0 || index >= arr.length) return `❌ Numéro invalide.`;
   const obj = arr[index];
   const current = typeof obj === 'string' ? 1 : (obj.quantite || 1);
+  // quantite null ou 0 = tout supprimer
+  const qty = (quantite === null || quantite === undefined || quantite <= 0) ? current : Math.min(parseInt(quantite), current);
   if (qty >= current) {
     arr.splice(index, 1);
   } else {

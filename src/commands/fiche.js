@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+
 const { getFiche, setFiche, deleteFiche, getAllFiches, getFichesByUser, getFicheByMonde, setFicheByMonde, deleteFicheByMonde, getAllFichesByMonde } = require('../utils/database');
 const { buildFicheEmbed, buildFicheButtons, buildFicheButtonsReadonly, buildNavigationButtons, createDefaultFiche } = require('../utils/ficheBuilder');
 
@@ -14,6 +15,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('fiche')
     .setDescription('Gérer ou consulter les fiches personnages')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand(sub =>
       sub.setName('add')
         .setDescription('[Admin] Créer une fiche personnage')

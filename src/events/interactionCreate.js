@@ -422,7 +422,27 @@ module.exports = {
         try { targetUser = await interaction.client.users.fetch(userId); }
         catch { targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null }; }
         const embed = buildFicheEmbed(fiche, targetUser);
-        const buttons = isAdminBtn ? buildFicheButtons(userId) : buildFicheButtonsReadonly(userId);
+        // Affiche les boutons admin seulement si l'interacteur est admin ET
+        // que ce n'est pas sa propre fiche vue via /me (on détecte ça en vérifiant
+        // que le message précédent n'avait que des boutons readonly)
+        const wasReadonly = interaction.message.components.every(row =>
+          row.components.every(c =>
+            !c.customId?.startsWith('btn_ajouter_') &&
+            !c.customId?.startsWith('btn_supprimer_') &&
+            !c.customId?.startsWith('btn_transferer_') &&
+            !c.customId?.startsWith('btn_vendre_') &&
+            !c.customId?.startsWith('argent_ajouter_') &&
+            !c.customId?.startsWith('argent_retirer_') &&
+            !c.customId?.startsWith('btn_transfert_argent_') &&
+            !c.customId?.startsWith('btn_revenu_') &&
+            !c.customId?.startsWith('btn_hp_plus_') &&
+            !c.customId?.startsWith('btn_hp_minus_') &&
+            !c.customId?.startsWith('btn_golem_') &&
+            !c.customId?.startsWith('btn_prop_') &&
+            !c.customId?.startsWith('btn_pv_max_')
+          )
+        );
+        const buttons = (isAdminBtn && !wasReadonly) ? buildFicheButtons(userId) : buildFicheButtonsReadonly(userId);
         const navRow  = getNavRow(interaction.message);
         const components = [...buttons];
         if (navRow) components.push(navRow);

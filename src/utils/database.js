@@ -93,8 +93,13 @@ async function getFicheByMonde(userId, monde) {
 async function setFicheByMonde(userId, monde, fiche) {
   const database = await connect();
   const m = monde ?? 1;
+  // Pour le monde 1, on cherche aussi les fiches sans champ monde (migration)
+  // afin d'éviter de créer un doublon si la fiche existante n'a pas le champ monde
+  const filter = m === 1
+    ? { userId, $or: [{ monde: 1 }, { monde: { $exists: false } }] }
+    : { userId, monde: m };
   await database.collection('fiches').updateOne(
-    { userId, monde: m },
+    filter,
     { $set: { userId, monde: m, ...fiche } },
     { upsert: true }
   );

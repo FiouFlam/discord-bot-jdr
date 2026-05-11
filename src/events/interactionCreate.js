@@ -29,6 +29,19 @@ function getNavRow(msg) {
   return hasNav ? last : null;
 }
 
+// ─── Helper : extrait le monde depuis l'embed du message ──────────────────────
+function getMondeFromMessage(msg) {
+  try {
+    const desc = msg?.embeds?.[0]?.description ?? '';
+    const footer = msg?.embeds?.[0]?.footer?.text ?? '';
+    const mDesc = desc.match(/Monde\s*:?\s*(\d+)/i);
+    if (mDesc) return parseInt(mDesc[1]);
+    const mFooter = footer.match(/Monde\s*:?\s*(\d+)/i);
+    if (mFooter) return parseInt(mFooter[1]);
+    return 1;
+  } catch { return 1; }
+}
+
 // ─── Helper : trouve l'ID d'un joueur par son nom (username ou displayName) ───
 async function findPlayerIdByName(client, name) {
   const fiches = await getAllFiches();
@@ -159,7 +172,7 @@ module.exports = {
           );
           return interaction.showModal(modal);
         } else if (action === 'del') {
-          const fiche = await getFiche(userId);
+          const fiche = await getFicheByMonde(userId, monde);
           const golemList = (fiche?.golems || []).map((g, i) => `g${i+1}: ${typeof g === 'string' ? g : g.nom}`).join(', ') || 'aucun';
           const modal = new ModalBuilder()
             .setCustomId(`modal_del_golem_${userId}__${messageId}`)
@@ -188,7 +201,7 @@ module.exports = {
           );
           return interaction.showModal(modal);
         } else if (action === 'del') {
-          const fiche = await getFiche(userId);
+          const fiche = await getFicheByMonde(userId, monde);
           const propList = (fiche?.proprietes || []).map((p, i) => `p${i+1}: ${typeof p === 'string' ? p : p.nom}`).join(', ') || 'aucune';
           const modal = new ModalBuilder()
             .setCustomId(`modal_del_prop_${userId}__${messageId}`)
@@ -205,7 +218,7 @@ module.exports = {
       if (id.startsWith('select_transfer_action_')) {
         const userId = id.replace('select_transfer_action_', '');
         const action = interaction.values[0];
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
 
         if (action === 'inventaire') {
@@ -287,7 +300,7 @@ module.exports = {
         const rest = id.replace('select_transferer_joueur_cible_', '');
         const [userId] = rest.split('__');
         const cibleId = interaction.values[0];
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
         let cibleLabel = cibleId;
         try { const u = await interaction.client.users.fetch(cibleId); cibleLabel = u.username; } catch {}
@@ -314,6 +327,7 @@ module.exports = {
       const isAdminBtn = interaction.memberPermissions?.has('Administrator');
       const id = interaction.customId;
       const messageId = interaction.message.id;
+      const monde = getMondeFromMessage(interaction.message);
 
       // Non-admin : autorisé seulement sur les boutons de navigation et refresh de sa propre fiche
       if (!isAdminBtn) {
@@ -373,7 +387,7 @@ module.exports = {
         if (fichesList) {
           fiche = fichesList[newIndex];
         } else {
-          fiche = monde ? await getFicheByMonde(userId, monde) : await getFiche(userId);
+          fiche = monde ? await getFicheByMonde(userId, monde) : await getFicheByMonde(userId, monde);
         }
 
         let targetUser;
@@ -402,34 +416,44 @@ module.exports = {
 
       // Refresh
       if (id.startsWith('btn_refresh_')) {
-        return updateMessage(interaction, id.replace('btn_refresh_', ''), true);
+        const userId = id.replace('btn_refresh_', '');
+        const fiche  = await getFicheByMonde(userId, monde);
+        let targetUser;
+        try { targetUser = await interaction.client.users.fetch(userId); }
+        catch { targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null }; }
+        const embed = buildFicheEmbed(fiche, targetUser);
+        const buttons = isAdminBtn ? buildFicheButtons(userId) : buildFicheButtonsReadonly(userId);
+        const navRow  = getNavRow(interaction.message);
+        const components = [...buttons];
+        if (navRow) components.push(navRow);
+        return interaction.update({ embeds: [embed], components });
       }
 
       // HP +
       if (id.startsWith('btn_hp_plus_')) {
         const userId = id.replace('btn_hp_plus_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const maxHp = fiche.maxHp ?? 5;
         fiche.hp = Math.min(maxHp, (fiche.hp ?? maxHp) + 1);
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, true);
       }
 
       // HP -
       if (id.startsWith('btn_hp_minus_')) {
         const userId = id.replace('btn_hp_minus_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         fiche.hp = Math.max(0, (fiche.hp ?? 5) - 1);
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, true);
       }
 
       // 🩺 PV Max — fixer manuellement les PV max
       if (id.startsWith('btn_pv_max_')) {
         const userId = id.replace('btn_pv_max_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const modal = new ModalBuilder()
           .setCustomId(`modal_pv_max_${userId}__${messageId}`)
           .setTitle('🩺 Modifier les PV Max');
@@ -481,7 +505,7 @@ module.exports = {
       // Revenu / jour
       if (id.startsWith('btn_revenu_')) {
         const userId = id.replace('btn_revenu_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const modal = new ModalBuilder()
           .setCustomId(`modal_revenu_${userId}__${messageId}`)
           .setTitle('🪙 Revenu journalier');
@@ -494,7 +518,7 @@ module.exports = {
       // ➕ Ajouter objet
       if (id.startsWith('btn_ajouter_')) {
         const userId = id.replace('btn_ajouter_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
         const modal = new ModalBuilder()
           .setCustomId(`modal_ajouter_${userId}__${messageId}`)
@@ -516,7 +540,7 @@ module.exports = {
       // ➖ Supprimer objet
       if (id.startsWith('btn_supprimer_')) {
         const userId = id.replace('btn_supprimer_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
         const modal = new ModalBuilder()
           .setCustomId(`modal_supprimer_${userId}__${messageId}`)
@@ -538,7 +562,7 @@ module.exports = {
       // 🔁 Transférer objet → affiche le select menu de type de transfert
       if (id.startsWith('btn_transferer_')) {
         const userId = id.replace('btn_transferer_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const embed = buildFicheEmbed(fiche, await interaction.client.users.fetch(userId).catch(() => ({ username: 'Joueur inconnu', displayAvatarURL: () => null })));
         const ficheButtons = buildFicheButtons(userId);
         const transferMenu = buildTransferActionMenu(userId);
@@ -585,7 +609,7 @@ module.exports = {
       // 💰 Vendre
       if (id.startsWith('btn_vendre_')) {
         const userId = id.replace('btn_vendre_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const invList = fiche ? getInventoryListLabels(fiche).join(', ') : 'perso';
         const modal = new ModalBuilder()
           .setCustomId(`modal_vendre_${userId}__${messageId}`)
@@ -611,7 +635,7 @@ module.exports = {
       if (id.startsWith('btn_golem_')) {
         const userId = id.replace('btn_golem_', '');
         const { buildGolemActionMenu } = require('../utils/ficheBuilder');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const embed = buildFicheEmbed(fiche, await interaction.client.users.fetch(userId).catch(() => ({ username: 'Joueur inconnu', displayAvatarURL: () => null })));
         const ficheButtons = buildFicheButtons(userId);
         const golemMenu = buildGolemActionMenu(userId);
@@ -627,7 +651,7 @@ module.exports = {
       if (id.startsWith('btn_prop_')) {
         const userId = id.replace('btn_prop_', '');
         const { buildPropActionMenu } = require('../utils/ficheBuilder');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const embed = buildFicheEmbed(fiche, await interaction.client.users.fetch(userId).catch(() => ({ username: 'Joueur inconnu', displayAvatarURL: () => null })));
         const ficheButtons = buildFicheButtons(userId);
         const propMenu = buildPropActionMenu(userId);
@@ -655,7 +679,7 @@ module.exports = {
       // 🪨 Supprimer golem
       if (id.startsWith('btn_del_golem_')) {
         const userId = id.replace('btn_del_golem_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const golemList = (fiche?.golems || []).map((g, i) => `g${i+1}: ${typeof g === 'string' ? g : g.nom}`).join(', ') || 'aucun';
         const modal = new ModalBuilder()
           .setCustomId(`modal_del_golem_${userId}__${messageId}`)
@@ -685,7 +709,7 @@ module.exports = {
       // 🏡 Supprimer propriété
       if (id.startsWith('btn_del_prop_')) {
         const userId = id.replace('btn_del_prop_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         const propList = (fiche?.proprietes || []).map((p, i) => `p${i+1}: ${typeof p === 'string' ? p : p.nom}`).join(', ') || 'aucune';
         const modal = new ModalBuilder()
           .setCustomId(`modal_del_prop_${userId}__${messageId}`)
@@ -708,12 +732,18 @@ module.exports = {
       const sepIdx = id.lastIndexOf('__');
       const messageId = sepIdx !== -1 ? id.slice(sepIdx + 2) : null;
       const baseId   = sepIdx !== -1 ? id.slice(0, sepIdx) : id;
+      // Récupère le monde depuis le message source
+      let monde = 1;
+      if (messageId && interaction.channel) {
+        const srcMsg = await interaction.channel.messages.fetch(messageId).catch(() => null);
+        monde = getMondeFromMessage(srcMsg);
+      }
 
       // Argent ajouter
       // 🩺 PV Max
       if (baseId.startsWith('modal_pv_max_')) {
         const userId = baseId.replace('modal_pv_max_', '');
-        const fiche  = await getFiche(userId);
+        const fiche  = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const pvMaxInput    = interaction.fields.getTextInputValue('pv_max').trim();
         const pvActuelInput = interaction.fields.getTextInputValue('pv_actuel').trim();
@@ -728,50 +758,50 @@ module.exports = {
         } else {
           fiche.hp = Math.min(fiche.hp ?? newMax, newMax);
         }
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // Argent ajouter
       if (baseId.startsWith('modal_argent_ajouter_')) {
         const userId = baseId.replace('modal_argent_ajouter_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const montant = parseInt(interaction.fields.getTextInputValue('montant').trim());
         if (isNaN(montant) || montant <= 0) return interaction.reply({ content: '❌ Montant invalide !', ephemeral: true });
         fiche.argent = (fiche.argent ?? 0) + montant;
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // Argent retirer
       if (baseId.startsWith('modal_argent_retirer_')) {
         const userId = baseId.replace('modal_argent_retirer_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const montant = parseInt(interaction.fields.getTextInputValue('montant').trim());
         if (isNaN(montant) || montant <= 0) return interaction.reply({ content: '❌ Montant invalide !', ephemeral: true });
         fiche.argent = Math.max(0, (fiche.argent ?? 0) - montant);
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // Revenu
       if (baseId.startsWith('modal_revenu_')) {
         const userId = baseId.replace('modal_revenu_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const val = parseInt(interaction.fields.getTextInputValue('revenu_input'));
         if (isNaN(val) || val < 0) return interaction.reply({ content: '❌ Valeur invalide !', ephemeral: true });
         fiche.revenu = val;
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // ➕ Ajouter
       if (baseId.startsWith('modal_ajouter_')) {
         const userId = baseId.replace('modal_ajouter_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const invName  = interaction.fields.getTextInputValue('inventaire').trim() || 'perso';
         const objetNom = interaction.fields.getTextInputValue('objet_nom').trim();
@@ -779,14 +809,14 @@ module.exports = {
         const inv = resolveInventoryByLabel(fiche, invName);
         if (!inv) return interaction.reply({ content: `❌ Inventaire "${invName}" introuvable.\nDisponibles : ${getInventoryListLabels(fiche).join(', ')}`, ephemeral: true });
         addToInventory(inv.arr, objetNom, quantite, inv.type);
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // ➖ Supprimer — FIX: supporte plusieurs numéros séparés par ";"
       if (baseId.startsWith('modal_supprimer_')) {
         const userId = baseId.replace('modal_supprimer_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const invName  = interaction.fields.getTextInputValue('inventaire').trim() || 'perso';
         const objetNumRaw = interaction.fields.getTextInputValue('objet_numero').trim();
@@ -811,14 +841,14 @@ module.exports = {
           if (err) errors.push(err);
         }
         if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs : ${errors.join(', ')}`, ephemeral: true });
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // 🔁 Transférer inventaire (entre inventaires du même joueur)
       if (baseId.startsWith('modal_transferer_inv_')) {
         const userId = baseId.replace('modal_transferer_inv_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const srcName  = interaction.fields.getTextInputValue('source').trim() || 'perso';
         const dstName  = interaction.fields.getTextInputValue('destination').trim() || 'perso';
@@ -853,7 +883,7 @@ module.exports = {
           addToInventory(dst.arr, nom, qtyItem, dst.type);
         }
         if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs partielles : ${errors.join(', ')}`, ephemeral: true });
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
@@ -866,9 +896,9 @@ module.exports = {
         const userId = cibleMatch[1];
         const cibleId = cibleMatch[2];
 
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
-        const ficheCible = await getFiche(cibleId);
+        const ficheCible = await getFicheByMonde(cibleId, monde);
         if (!ficheCible) return interaction.reply({ content: '❌ Fiche du joueur cible introuvable.', ephemeral: true });
 
         const srcName     = interaction.fields.getTextInputValue('source').trim() || 'perso';
@@ -901,8 +931,8 @@ module.exports = {
           addToInventory(ficheCible.inventaire, nom, qtyItem, 'perso');
         }
         if (errors.length > 0) return interaction.reply({ content: `❌ Erreurs partielles : ${errors.join(', ')}`, ephemeral: true });
-        await setFiche(userId, fiche);
-        await setFiche(cibleId, ficheCible);
+        await setFicheByMonde(userId, monde, fiche);
+        await setFicheByMonde(cibleId, monde, ficheCible);
         return updateMessage(interaction, userId, false, messageId);
       }
 
@@ -914,25 +944,25 @@ module.exports = {
         const userId = cibleMatch[1];
         const cibleId = cibleMatch[2];
 
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const montant = parseInt(interaction.fields.getTextInputValue('montant').trim());
         if (isNaN(montant) || montant <= 0) return interaction.reply({ content: '❌ Montant invalide !', ephemeral: true });
 
-        const ficheCible = await getFiche(cibleId);
+        const ficheCible = await getFicheByMonde(cibleId, monde);
         if (!ficheCible) return interaction.reply({ content: '❌ Fiche du joueur cible introuvable.', ephemeral: true });
         if ((fiche.argent ?? 0) < montant) return interaction.reply({ content: `❌ Fonds insuffisants ! Solde : ${fiche.argent ?? 0} kyp.`, ephemeral: true });
         fiche.argent = (fiche.argent ?? 0) - montant;
         ficheCible.argent = (ficheCible.argent ?? 0) + montant;
-        await setFiche(userId, fiche);
-        await setFiche(cibleId, ficheCible);
+        await setFicheByMonde(userId, monde, fiche);
+        await setFicheByMonde(cibleId, monde, ficheCible);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // 💰 Vendre
       if (baseId.startsWith('modal_vendre_')) {
         const userId = baseId.replace('modal_vendre_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const invName  = interaction.fields.getTextInputValue('inventaire').trim() || 'perso';
         const objetNum = parseInt(interaction.fields.getTextInputValue('objet_numero').trim());
@@ -946,27 +976,27 @@ module.exports = {
         const err = removeFromInventoryByIndex(inv.arr, objetNum - 1, quantite, inv.type);
         if (err) return interaction.reply({ content: err, ephemeral: true });
         fiche.argent = (fiche.argent ?? 0) + prix;
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // 🪨 Ajouter golem
       if (baseId.startsWith('modal_add_golem_')) {
         const userId = baseId.replace('modal_add_golem_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const nom = interaction.fields.getTextInputValue('nom').trim();
         if (!nom) return interaction.reply({ content: '❌ Nom invalide.', ephemeral: true });
         if (!Array.isArray(fiche.golems)) fiche.golems = [];
         fiche.golems.push({ nom, inventaire: [] });
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // 🪨 Supprimer golem
       if (baseId.startsWith('modal_del_golem_')) {
         const userId = baseId.replace('modal_del_golem_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const input = interaction.fields.getTextInputValue('numero').trim().toLowerCase();
         const match = input.match(/^g(\d+)$/);
@@ -974,27 +1004,27 @@ module.exports = {
         const idx = parseInt(match[1]) - 1;
         if (idx < 0 || idx >= (fiche.golems || []).length) return interaction.reply({ content: `❌ Numéro invalide. Il y a ${(fiche.golems || []).length} golem(s).`, ephemeral: true });
         fiche.golems.splice(idx, 1);
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // 🏡 Ajouter propriété
       if (baseId.startsWith('modal_add_prop_')) {
         const userId = baseId.replace('modal_add_prop_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const nom = interaction.fields.getTextInputValue('nom').trim();
         if (!nom) return interaction.reply({ content: '❌ Nom invalide.', ephemeral: true });
         if (!Array.isArray(fiche.proprietes)) fiche.proprietes = [];
         fiche.proprietes.push({ nom, objets: [] });
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
 
       // 🏡 Supprimer propriété
       if (baseId.startsWith('modal_del_prop_')) {
         const userId = baseId.replace('modal_del_prop_', '');
-        const fiche = await getFiche(userId);
+        const fiche = await getFicheByMonde(userId, monde);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const input = interaction.fields.getTextInputValue('numero').trim().toLowerCase();
         const match = input.match(/^p(\d+)$/);
@@ -1002,7 +1032,7 @@ module.exports = {
         const idx = parseInt(match[1]) - 1;
         if (idx < 0 || idx >= (fiche.proprietes || []).length) return interaction.reply({ content: `❌ Numéro invalide. Il y a ${(fiche.proprietes || []).length} propriété(s).`, ephemeral: true });
         fiche.proprietes.splice(idx, 1);
-        await setFiche(userId, fiche);
+        await setFicheByMonde(userId, monde, fiche);
         return updateMessage(interaction, userId, false, messageId);
       }
     }
@@ -1011,16 +1041,18 @@ module.exports = {
 
 // ─── Helper updateMessage ──────────────────────────────────────────────────────
 async function updateMessage(interaction, userId, isButton = false, messageId = null) {
-  const fiche = await getFiche(userId);
+  const msg = isButton ? interaction.message
+    : (messageId && interaction.channel ? await interaction.channel.messages.fetch(messageId).catch(() => null) : null);
+  const monde = getMondeFromMessage(msg);
+  const fiche = await getFicheByMonde(userId, monde);
   let targetUser;
   try { targetUser = await interaction.client.users.fetch(userId); }
   catch { targetUser = { username: 'Joueur inconnu', displayAvatarURL: () => null }; }
 
-  const embed = buildFicheEmbed(fiche, targetUser);
+  const embed   = buildFicheEmbed(fiche, targetUser);
   const buttons = buildFicheButtons(userId);
 
   if (isButton) {
-    const msg = interaction.message;
     let components = [...buttons];
     const navRow = getNavRow(msg);
     if (navRow) components.push(navRow);
@@ -1029,12 +1061,11 @@ async function updateMessage(interaction, userId, isButton = false, messageId = 
 
   await interaction.deferUpdate();
 
-  if (!messageId || !interaction.channel) {
+  if (!msg) {
     return interaction.followUp({ content: '✅ Mis à jour !', ephemeral: true });
   }
 
   try {
-    const msg = await interaction.channel.messages.fetch(messageId);
     let components = [...buttons];
     const navRow = getNavRow(msg);
     if (navRow) components.push(navRow);

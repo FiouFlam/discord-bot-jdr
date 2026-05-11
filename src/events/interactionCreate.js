@@ -411,8 +411,7 @@ module.exports = {
         const fiche = await getFiche(userId);
         if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
         const maxHp = fiche.maxHp ?? 5;
-        fiche.maxHp = maxHp + 1;
-        fiche.hp = (fiche.hp ?? 5) + 1;
+        fiche.hp = Math.min(maxHp, (fiche.hp ?? maxHp) + 1);
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, true);
       }
@@ -425,6 +424,34 @@ module.exports = {
         fiche.hp = Math.max(0, (fiche.hp ?? 5) - 1);
         await setFiche(userId, fiche);
         return updateMessage(interaction, userId, true);
+      }
+
+      // 🩺 PV Max — fixer manuellement les PV max
+      if (id.startsWith('btn_pv_max_')) {
+        const userId = id.replace('btn_pv_max_', '');
+        const fiche = await getFiche(userId);
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_pv_max_${userId}__${messageId}`)
+          .setTitle('🩺 Modifier les PV Max');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('pv_max')
+              .setLabel('Nouveaux PV max')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder(`Actuellement : ${fiche?.maxHp ?? 5}`)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('pv_actuel')
+              .setLabel('PV actuels (vide = garder)')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder(`Actuellement : ${fiche?.hp ?? fiche?.maxHp ?? 5}`)
+              .setRequired(false)
+          ),
+        );
+        return interaction.showModal(modal);
       }
 
       // Ajouter argent
@@ -681,6 +708,29 @@ module.exports = {
       const sepIdx = id.lastIndexOf('__');
       const messageId = sepIdx !== -1 ? id.slice(sepIdx + 2) : null;
       const baseId   = sepIdx !== -1 ? id.slice(0, sepIdx) : id;
+
+      // Argent ajouter
+      // 🩺 PV Max
+      if (baseId.startsWith('modal_pv_max_')) {
+        const userId = baseId.replace('modal_pv_max_', '');
+        const fiche  = await getFiche(userId);
+        if (!fiche) return interaction.reply({ content: '❌ Fiche introuvable.', ephemeral: true });
+        const pvMaxInput    = interaction.fields.getTextInputValue('pv_max').trim();
+        const pvActuelInput = interaction.fields.getTextInputValue('pv_actuel').trim();
+        const newMax = parseInt(pvMaxInput);
+        if (isNaN(newMax) || newMax < 1) return interaction.reply({ content: '❌ PV max invalide (minimum 1).', ephemeral: true });
+        fiche.maxHp = newMax;
+        // PV actuels : si renseigné → fixer, sinon → clamp au nouveau max
+        if (pvActuelInput !== '') {
+          const newHp = parseInt(pvActuelInput);
+          if (isNaN(newHp) || newHp < 0) return interaction.reply({ content: '❌ PV actuels invalides.', ephemeral: true });
+          fiche.hp = Math.min(newHp, newMax);
+        } else {
+          fiche.hp = Math.min(fiche.hp ?? newMax, newMax);
+        }
+        await setFiche(userId, fiche);
+        return updateMessage(interaction, userId, false, messageId);
+      }
 
       // Argent ajouter
       if (baseId.startsWith('modal_argent_ajouter_')) {

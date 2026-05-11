@@ -93,16 +93,21 @@ async function getFicheByMonde(userId, monde) {
 async function setFicheByMonde(userId, monde, fiche) {
   const database = await connect();
   const m = monde ?? 1;
-  // Pour le monde 1, on cherche aussi les fiches sans champ monde (migration)
-  // afin d'éviter de créer un doublon si la fiche existante n'a pas le champ monde
-  const filter = m === 1
+  // MongoDB n'accepte pas $or dans un filtre d'upsert.
+  // On cherche d'abord la fiche existante (avec la même logique que getFicheByMonde),
+  // puis on met à jour via son _id — ou on insère si absente.
+  const query = m === 1
     ? { userId, $or: [{ monde: 1 }, { monde: { $exists: false } }] }
     : { userId, monde: m };
-  await database.collection('fiches').updateOne(
-    filter,
-    { $set: { userId, monde: m, ...fiche } },
-    { upsert: true }
-  );
+  const existing = await database.collection('fiches').findOne(query);
+  if (existing) {
+    await database.collection('fiches').updateOne(
+      { _id: existing._id },
+      { $set: { userId, monde: m, ...fiche } }
+    );
+  } else {
+    await database.collection('fiches').insertOne({ userId, monde: m, ...fiche });
+  }
 }
 
 // Supprime la fiche d'un userId pour un monde précis

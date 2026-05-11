@@ -134,16 +134,16 @@ function buildFicheButtons(userId) {
     new ButtonBuilder().setCustomId(`argent_retirer_${userId}`).setLabel('💸 Retirer argent').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`btn_transfert_argent_${userId}`).setLabel('💳 Transférer argent').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`btn_revenu_${userId}`).setLabel('🪙 Revenu / jour').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`btn_hp_plus_${userId}`).setLabel('❤️ HP +').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`btn_refresh_${userId}`).setLabel('🔄 Refresh').setStyle(ButtonStyle.Secondary),
   );
 
   // FIX: btn_golem_ et btn_prop_ renommés en btn_add_golem_ / btn_add_prop_ pour que les handlers les capturent
   const row3 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`btn_golem_${userId}`).setLabel('🪨 Golem').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`btn_prop_${userId}`).setLabel('🏡 Propriété').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`btn_hp_plus_${userId}`).setLabel('❤️ HP +').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`btn_hp_minus_${userId}`).setLabel('💔 HP -').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`btn_pv_max_${userId}`).setLabel('🩺 PV Max').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`btn_refresh_${userId}`).setLabel('🔄 Refresh').setStyle(ButtonStyle.Secondary),
   );
 
   return [row1, row2, row3];

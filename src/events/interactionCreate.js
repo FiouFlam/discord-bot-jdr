@@ -32,12 +32,15 @@ function getNavRow(msg) {
 // ─── Helper : extrait le monde depuis l'embed du message ──────────────────────
 function getMondeFromMessage(msg) {
   try {
-    const desc = msg?.embeds?.[0]?.description ?? '';
-    const footer = msg?.embeds?.[0]?.footer?.text ?? '';
-    const mDesc = desc.match(/Monde\s*:?\s*(\d+)/i);
-    if (mDesc) return parseInt(mDesc[1]);
-    const mFooter = footer.match(/Monde\s*:?\s*(\d+)/i);
-    if (mFooter) return parseInt(mFooter[1]);
+    const desc    = msg?.embeds?.[0]?.description ?? '';
+    const footer  = msg?.embeds?.[0]?.footer?.text ?? '';
+    const content = msg?.content ?? '';
+    // Chercher dans footer d'abord (le plus fiable : "Session #1 (Monde 2) • …")
+    // puis dans la description de l'embed, puis dans le contenu du message
+    for (const text of [footer, desc, content]) {
+      const m = text.match(/Monde\s*(\d+)/i);
+      if (m) return parseInt(m[1]);
+    }
     return 1;
   } catch { return 1; }
 }
@@ -98,6 +101,8 @@ module.exports = {
       }
       const id = interaction.customId;
       const messageId = interaction.message.id;
+      // ── Résoudre le monde depuis le message courant (manquait dans ce scope) ──
+      const monde = getMondeFromMessage(interaction.message);
 
       // Lancement session
       if (id.startsWith('select_session_joueurs')) {
@@ -128,8 +133,15 @@ module.exports = {
         // Stocker le message dans la session
         const session = sessions.get(key);
         if (session) {
-          const msg = await interaction.fetchReply().catch(() => interaction.message);
-          session.message = msg;
+          // fetchReply() retourne le bon message après interaction.update()
+          // On attend un tick pour que Discord l'ait bien enregistré
+          try {
+            const msg = await interaction.fetchReply();
+            session.message = msg;
+          } catch {
+            // fallback : on stocke null, la session sera trouvée par unicité
+            session.message = null;
+          }
         }
         return;
       }
